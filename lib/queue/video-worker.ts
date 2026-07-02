@@ -1,10 +1,23 @@
 import { Worker } from 'bullmq';
-import IORedis from 'ioredis';
+import { createClient } from '@supabase/supabase-js';
 import { getVideoDuration } from '@/lib/video-assembler';
-import { supabaseAdmin } from '@/lib/supabase';
+import { getSupabaseAdmin } from '@/lib/supabase';
 import { VideoJobData } from './video-queue';
 
-const connection = new IORedis(
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+const supabaseAdmin = createClient(supabaseUrl, serviceKey, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+  },
+});
+
+// Use bullmq's internal redis to avoid version conflicts
+import Redis from 'bullmq/node_modules/ioredis';
+
+const connection = new Redis(
   process.env.REDIS_URL || 'redis://localhost:6379',
   {
     maxRetriesPerRequest: null,
@@ -152,14 +165,17 @@ export const videoWorker = new Worker<VideoJobData>(
       console.error(`[Worker] Error for job ${videoJobId}:`, errorMsg);
 
       // Update video_job with error status
-      await supabaseAdmin
-        .from('video_jobs')
-        .update({
-          status: 'failed',
-          error_message: errorMsg,
-        })
-        .eq('id', videoJobId)
-        .catch(() => {});
+      try {
+        await supabaseAdmin
+          .from('video_jobs')
+          .update({
+            status: 'failed',
+            error_message: errorMsg,
+          })
+          .eq('id', videoJobId);
+      } catch (e) {
+        console.error(`[Worker] Failed to update error status for ${videoJobId}:`, e);
+      }
 
       throw error;
     }
