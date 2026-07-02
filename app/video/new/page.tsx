@@ -217,25 +217,10 @@ export default function NewVideoPage() {
     setError('');
 
     try {
-      // Create video_job in Supabase
-      const videoJobId = `vid_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-      const { error: createError } = await supabaseAdmin.from('video_jobs').insert({
-        id: videoJobId,
-        status: 'pending',
-        script_id: formData.scriptId,
-      });
-
-      if (createError) {
-        throw new Error(`Failed to create video job: ${createError.message}`);
-      }
-
-      // Call /api/video/start
       const startRes = await fetch('/api/video/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          videoJobId,
           scriptId: formData.scriptId,
           nicheName: formData.nicheName,
           imageIntervalSeconds: formData.imageIntervalSeconds,
@@ -257,8 +242,9 @@ export default function NewVideoPage() {
         throw new Error(data.error || 'Failed to start video generation');
       }
 
+      const data = await startRes.json();
       // Redirect to status page
-      router.push(`/video/${videoJobId}/status`);
+      router.push(`/video/${data.videoJobId}/status`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       setError(msg);
