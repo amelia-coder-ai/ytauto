@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { videoQueue } from '@/lib/queue/video-queue';
+import { getSupabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
 interface StartVideoBody {
-  videoJobId: string;
   scriptId: string;
   nicheName: string;
   imageIntervalSeconds: number;
@@ -30,7 +30,6 @@ export async function POST(req: NextRequest) {
   }
 
   const {
-    videoJobId,
     scriptId,
     nicheName,
     imageIntervalSeconds,
@@ -42,13 +41,6 @@ export async function POST(req: NextRequest) {
   } = body;
 
   // Validate required fields
-  if (!videoJobId || typeof videoJobId !== 'string') {
-    return NextResponse.json(
-      { error: '`videoJobId` (string) is required' },
-      { status: 400 }
-    );
-  }
-
   if (!scriptId || typeof scriptId !== 'string') {
     return NextResponse.json(
       { error: '`scriptId` (string) is required' },
@@ -88,6 +80,21 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // Generate video job ID
+    const videoJobId = `vid_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // Create video_job record in Supabase
+    const supabaseAdmin = getSupabaseAdmin();
+    const { error: createError } = await supabaseAdmin.from('video_jobs').insert({
+      id: videoJobId,
+      status: 'pending',
+      script_id: scriptId,
+    });
+
+    if (createError) {
+      throw new Error(`Failed to create video job: ${createError.message}`);
+    }
+
     // Add job to queue
     await videoQueue.add(
       'render',
