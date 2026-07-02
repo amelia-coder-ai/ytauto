@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { supabaseAdmin } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -102,12 +102,12 @@ export default function NewVideoPage() {
   const fetchScriptsAndNiches = async () => {
     try {
       const [scriptsRes, nichesRes] = await Promise.all([
-        supabaseAdmin.from('scripts').select('*').eq('status', 'ready').order('created_at', { ascending: false }),
-        supabaseAdmin.from('niches').select('*'),
+        fetch('/api/scripts/list').then(r => r.json()),
+        supabase.from('niches').select('*'),
       ]);
 
-      if (scriptsRes.data) {
-        setScripts(scriptsRes.data as Script[]);
+      if (scriptsRes.scripts) {
+        setScripts(scriptsRes.scripts);
       }
       if (nichesRes.data) {
         setNiches(nichesRes.data as Niche[]);
