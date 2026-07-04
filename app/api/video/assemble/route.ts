@@ -13,7 +13,6 @@ interface AssembleVideoBody {
 interface VideoJob {
   id: string;
   output_video_url: string;
-  subtitle_video_url?: string;
   watermark_url?: string;
   status: string;
 }
@@ -61,8 +60,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Accept subtitle path from request body or fall back to DB
-    const subtitleUrl = bodySubtitlePath || job.subtitle_video_url;
+    const subtitleUrl = bodySubtitlePath;
     if (!subtitleUrl) {
       return NextResponse.json(
         { error: 'Subtitle video not found for this job' },
@@ -101,8 +99,7 @@ export async function POST(req: NextRequest) {
       .from('video_jobs')
       .update({
         output_video_url: finalVideoUrl,
-        subtitle_video_url: subtitleUrl,
-        status: 'completed',
+        status: 'assembling',
       })
       .eq('id', videoJobId);
 

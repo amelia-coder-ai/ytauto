@@ -255,7 +255,7 @@ export async function POST(req: NextRequest) {
     const { error: updateCompleteError } = await supabaseAdmin
       .from("video_jobs")
       .update({
-        status: "ready",
+        status: "rendering",
         output_video_url: outputVideoUrl,
         completed_scenes: chunks.length,
       })

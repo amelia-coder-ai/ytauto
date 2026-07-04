@@ -30,6 +30,10 @@ const getStatusStep = (status: string): number => {
       return 0;
     case 'generating':
       return 1;
+    case 'rendering':
+      return 2;
+    case 'assembling':
+      return 3;
     case 'ready':
       return 4;
     case 'failed':
@@ -43,6 +47,8 @@ const getStatusColor = (status: string) => {
   switch (status) {
     case 'pending':
     case 'generating':
+    case 'rendering':
+    case 'assembling':
       return 'bg-blue-100 text-blue-800';
     case 'ready':
       return 'bg-green-100 text-green-800';
@@ -57,6 +63,8 @@ const getStatusIcon = (status: string) => {
   switch (status) {
     case 'pending':
     case 'generating':
+    case 'rendering':
+    case 'assembling':
       return '⏳';
     case 'ready':
       return '✅';
