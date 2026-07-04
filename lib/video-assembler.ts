@@ -33,7 +33,8 @@ export function overlaySubtitles(
   return new Promise((resolve, reject) => {
     ffmpeg(mainVideoPath)
       .input(subtitleVideoPath)
-      .complexFilter('[1:v]colorkey=0x000000:0.1:0.0[sub];[0:v][sub]overlay=0:0:shortest=1')
+      .complexFilter('[1:v][0:v]scale2ref[sub_scaled][main];[sub_scaled]colorkey=0x000000:0.1:0.0[clean];[main][clean]overlay=0:0:shortest=1[out]')
+      .outputOption('-map [out]')
       .outputOption('-map 0:a?')
       .audioCodec('copy')
       .output(outputPath)
@@ -56,8 +57,9 @@ export function addWatermark(
     ffmpeg(inputPath)
       .input(watermarkPath)
       .complexFilter(
-        `[1:v]scale=200:-1,format=rgba,colorchannelmixer=aa=0.5[wm];[0:v][wm]overlay=W-w-20:H-h-20:enable='between(t,0,10)'`
+        `[1:v]scale=200:-1,format=rgba,colorchannelmixer=aa=0.5[wm];[0:v][wm]overlay=W-w-20:H-h-20:enable='between(t,0,10)'[out]`
       )
+      .outputOption('-map [out]')
       .outputOption('-map 0:a?')
       .audioCodec('copy')
       .output(outputPath)

@@ -51,25 +51,23 @@ export const SubtitleVideo: React.FC<SubtitleProps> = ({
     },
   });
 
-  const containerTop = position === 'bottom' ? 'auto' : '50%';
-  const containerBottom = position === 'bottom' ? '40px' : 'auto';
-  const containerTransform = position === 'center' ? 'translateY(-50%)' : 'none';
+  const containerStyle: React.CSSProperties = {
+    position: 'absolute',
+    left: '50%',
+    maxWidth: '90%',
+    textAlign: 'center',
+  };
+
+  if (position === 'bottom') {
+    containerStyle.bottom = '40px';
+    containerStyle.transform = 'translateX(-50%)';
+  } else {
+    containerStyle.top = '50%';
+    containerStyle.transform = 'translateX(-50%) translateY(-50%)';
+  }
 
   return (
-    <div
-      style={{
-        position: 'absolute',
-        top: containerTop,
-        bottom: containerBottom,
-        left: '50%',
-        transform: `translateX(-50%) ${containerTransform}`,
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
-        padding: '16px 24px',
-        borderRadius: '8px',
-        maxWidth: '90%',
-        textAlign: 'center',
-      }}
-    >
+    <div style={containerStyle}>
       <div
         style={{
           display: 'flex',

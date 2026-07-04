@@ -33,6 +33,7 @@ export async function renderSubtitles(
       inputProps: props as unknown as Record<string, unknown>,
       chromiumOptions: {
         enableMultiProcessOnLinux: true,
+        gl: 'swangle',
       },
     });
 
