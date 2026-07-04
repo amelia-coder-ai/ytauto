@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { join } from 'path';
 import { supabaseAdmin } from '@/lib/supabase';
-import { assembleFinalVideo } from '@/lib/video-assembler';
 
 export const maxDuration = 900;
 export const dynamic = 'force-dynamic';
 
 interface AssembleVideoBody {
   videoJobId: string;
+  subtitleVideoPath?: string;
 }
 
 interface VideoJob {
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const { videoJobId } = body;
+  const { videoJobId, subtitleVideoPath: bodySubtitlePath } = body;
 
   if (!videoJobId || typeof videoJobId !== 'string') {
     return NextResponse.json(
@@ -61,7 +61,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!job.subtitle_video_url) {
+    // Accept subtitle path from request body or fall back to DB
+    const subtitleUrl = bodySubtitlePath || job.subtitle_video_url;
+    if (!subtitleUrl) {
       return NextResponse.json(
         { error: 'Subtitle video not found for this job' },
         { status: 400 }
@@ -70,7 +72,7 @@ export async function POST(req: NextRequest) {
 
     // Convert URL paths to file system paths
     const modalVideoPath = join(process.cwd(), 'public', job.output_video_url.replace(/^\//, ''));
-    const subtitleVideoPath = join(process.cwd(), 'public', job.subtitle_video_url.replace(/^\//, ''));
+    const subtitleVideoPath = join(process.cwd(), 'public', subtitleUrl.replace(/^\//, ''));
 
     const finalOutputPath = join(
       process.cwd(),
@@ -80,8 +82,9 @@ export async function POST(req: NextRequest) {
       'final-assembled.mp4'
     );
 
-    // Assemble the final video
-    const assembledPath = await assembleFinalVideo({
+    // Assemble the final video (dynamic import to avoid webpack bundling native modules)
+    const { assembleFinalVideo } = await import('@/lib/video-assembler');
+    await assembleFinalVideo({
       videoJobId,
       modalVideoPath,
       subtitleVideoPath,
@@ -98,6 +101,7 @@ export async function POST(req: NextRequest) {
       .from('video_jobs')
       .update({
         output_video_url: finalVideoUrl,
+        subtitle_video_url: subtitleUrl,
         status: 'completed',
       })
       .eq('id', videoJobId);
@@ -122,14 +126,15 @@ export async function POST(req: NextRequest) {
     console.error('Video assembly error:', err);
 
     // Update video_job with error status
-    await supabaseAdmin
-      .from('video_jobs')
-      .update({
-        status: 'failed',
-        error_message: `Assembly failed: ${errorMsg}`,
-      })
-      .eq('id', videoJobId)
-      .catch(() => {});
+    try {
+      await supabaseAdmin
+        .from('video_jobs')
+        .update({
+          status: 'failed',
+          error_message: `Assembly failed: ${errorMsg}`,
+        })
+        .eq('id', videoJobId);
+    } catch {} // ignore cleanup error
 
     return NextResponse.json(
       { error: 'Video assembly failed', detail: errorMsg },

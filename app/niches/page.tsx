@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, PlusCircle } from "lucide-react";
+import { Loader2, PlusCircle, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,6 +20,7 @@ export default function NichesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [niches, setNiches] = useState<NicheRow[]>([]);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -48,6 +49,21 @@ export default function NichesPage() {
     () => niches.filter((n) => n.status === "ready").length,
     [niches]
   );
+
+  const handleDelete = async (id: string, name: string) => {
+    if (!window.confirm(`Delete "${name}"? This cannot be undone.`)) return;
+    setDeleting(id);
+    try {
+      const res = await fetch(`/api/niches/${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete");
+      setNiches((prev) => prev.filter((n) => n.id !== id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete niche");
+    } finally {
+      setDeleting(null);
+    }
+  };
 
   return (
     <main className="space-y-6">
@@ -116,11 +132,25 @@ export default function NichesPage() {
                   <p className="text-xs text-muted-foreground">
                     {new Date(niche.created_at).toLocaleString()}
                   </p>
-                  <Link href={`/niche/${niche.id}`}>
-                    <Button size="sm" variant="outline">
-                      View
+                  <div className="flex items-center gap-2">
+                    <Link href={`/niche/${niche.id}`}>
+                      <Button size="sm" variant="outline">
+                        View
+                      </Button>
+                    </Link>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={deleting === niche.id}
+                      onClick={() => handleDelete(niche.id, niche.name)}
+                    >
+                      {deleting === niche.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
                     </Button>
-                  </Link>
+                  </div>
                 </div>
               </CardContent>
             </Card>

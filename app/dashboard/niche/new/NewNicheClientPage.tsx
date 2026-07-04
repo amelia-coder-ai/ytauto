@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -45,6 +46,7 @@ interface NicheProfile {
 type Phase = "setup" | "training" | "success" | "error";
 
 export default function NewNicheClientPage() {
+  const searchParams = useSearchParams();
   const [nicheName, setNicheName] = useState("");
   const [trainedNicheId, setTrainedNicheId] = useState<string | null>(null);
 
@@ -52,6 +54,7 @@ export default function NewNicheClientPage() {
   const [videos, setVideos] = useState<VideoEntry[]>([]);
   const [isAdding, setIsAdding] = useState(false);
 
+  const prefetched = useRef(false);
   const [phase, setPhase] = useState<Phase>("setup");
   const [profile, setProfile] = useState<NicheProfile | null>(null);
   const [trainError, setTrainError] = useState("");
@@ -59,9 +62,9 @@ export default function NewNicheClientPage() {
   const doneCount = videos.filter((v) => v.status === "done").length;
   const canTrain = doneCount >= 1 && nicheName.trim().length > 0;
 
-  const handleAddVideo = useCallback(async () => {
-    const trimmed = urlInput.trim();
-    if (!trimmed || isAdding) return;
+  const addVideoByUrl = useCallback(async (url: string): Promise<string | null> => {
+    const trimmed = url.trim();
+    if (!trimmed) return null;
 
     const id = crypto.randomUUID();
     const entry: VideoEntry = {
@@ -74,8 +77,6 @@ export default function NewNicheClientPage() {
     };
 
     setVideos((prev) => [...prev, entry]);
-    setUrlInput("");
-    setIsAdding(true);
 
     try {
       const res = await fetch("/api/youtube/transcript", {
@@ -103,15 +104,41 @@ export default function NewNicheClientPage() {
             : v
         )
       );
+      return id;
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       setVideos((prev) =>
         prev.map((v) => (v.id === id ? { ...v, status: "error", error: message } : v))
       );
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (prefetched.current) return;
+    const videosParam = searchParams.get("videos");
+    if (!videosParam) return;
+
+    const videoIds = videosParam.split(",").filter(Boolean);
+    if (videoIds.length === 0) return;
+
+    prefetched.current = true;
+    videoIds.forEach((videoId) => {
+      addVideoByUrl(`https://www.youtube.com/watch?v=${videoId}`);
+    });
+  }, [searchParams, addVideoByUrl]);
+
+  const handleAddVideo = useCallback(async () => {
+    const trimmed = urlInput.trim();
+    if (!trimmed || isAdding) return;
+    setUrlInput("");
+    setIsAdding(true);
+    try {
+      await addVideoByUrl(trimmed);
     } finally {
       setIsAdding(false);
     }
-  }, [urlInput, isAdding]);
+  }, [urlInput, isAdding, addVideoByUrl]);
 
   const removeVideo = useCallback((id: string) => {
     setVideos((prev) => prev.filter((v) => v.id !== id));

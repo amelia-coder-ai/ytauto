@@ -1,7 +1,7 @@
 import React from 'react';
 import { useCurrentFrame, useVideoConfig, spring } from 'remotion';
 
-export interface SubtitleProps {
+export interface SubtitleProps extends Record<string, unknown> {
   scenes: { content: string; durationSeconds: number }[];
   totalDurationSeconds: number;
   highlightColor: string;

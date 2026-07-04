@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Step 2: Call chunkScript()
-    const chunks = chunkScript(scenes, imageIntervalSeconds, nicheName);
+    const chunks = await chunkScript(scenes, imageIntervalSeconds, nicheName);
 
     // Step 3: Call formatChunksForModal()
     const modalScenes = formatChunksForModal(chunks);
@@ -158,9 +158,13 @@ export async function POST(req: NextRequest) {
     }
 
     // Step 6: Call Modal.com endpoint with 30-minute timeout
-    const modalEndpoint = process.env.MODAL_ENDPOINT_URL;
-    if (!modalEndpoint) {
-      const errorMsg = "MODAL_ENDPOINT_URL is not configured";
+    const modalEndpoint = process.env.MODAL_ENDPOINT_URL?.trim();
+    if (
+      !modalEndpoint ||
+      modalEndpoint.includes("your-username--explainer-videos-flask-app")
+    ) {
+      const errorMsg =
+        "MODAL_ENDPOINT_URL is not configured. Set it to your deployed Modal video generation endpoint.";
       await supabaseAdmin
         .from("video_jobs")
         .update({
@@ -283,14 +287,15 @@ export async function POST(req: NextRequest) {
     console.error("Video generation error:", err);
 
     // Update video_job with error status
-    await supabaseAdmin
-      .from("video_jobs")
-      .update({
-        status: "failed",
-        error_message: errorMsg,
-      })
-      .eq("id", videoJobId)
-      .catch(() => {});
+    try {
+      await supabaseAdmin
+        .from("video_jobs")
+        .update({
+          status: "failed",
+          error_message: errorMsg,
+        })
+        .eq("id", videoJobId);
+    } catch {} // ignore cleanup error
 
     return NextResponse.json(
       { error: "Video generation failed", detail: errorMsg },

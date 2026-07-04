@@ -1,7 +1,6 @@
 import { Worker } from 'bullmq';
 import { createClient } from '@supabase/supabase-js';
 import { getVideoDuration } from '@/lib/video-assembler';
-import { getSupabaseAdmin } from '@/lib/supabase';
 import { VideoJobData } from './video-queue';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -119,12 +118,6 @@ export const videoWorker = new Worker<VideoJobData>(
       const subtitleData = await subtitleRes.json();
       console.log(`[Worker] Subtitles rendered: ${subtitleData.subtitleVideoPath}`);
 
-      // Update video_job with subtitle URL
-      await supabaseAdmin
-        .from('video_jobs')
-        .update({ subtitle_video_url: subtitleData.subtitleVideoPath })
-        .eq('id', videoJobId);
-
       // Step 5: Call /api/video/assemble (FFmpeg assembly)
       console.log(`[Worker] Calling video/assemble for ${videoJobId}`);
       const assembleRes = await fetch(
@@ -132,7 +125,10 @@ export const videoWorker = new Worker<VideoJobData>(
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ videoJobId }),
+          body: JSON.stringify({
+            videoJobId,
+            subtitleVideoPath: subtitleData.subtitleVideoPath,
+          }),
         }
       );
 

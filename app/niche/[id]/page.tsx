@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
-import { Loader2, ArrowLeft, ExternalLink } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+import { Loader2, ArrowLeft, ExternalLink, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,8 +39,10 @@ export default function NicheDetailPage() {
   const params = useParams<{ id: string }>();
   const nicheId = params?.id;
 
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [deleting, setDeleting] = useState(false);
   const [niche, setNiche] = useState<Niche | null>(null);
   const [profile, setProfile] = useState<NicheProfile | null>(null);
   const [videos, setVideos] = useState<NicheVideo[]>([]);
@@ -75,24 +77,46 @@ export default function NicheDetailPage() {
 
   return (
     <main className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-1">
-          <Link
-            href="/niches"
-            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to niches
-          </Link>
-          <h1 className="text-2xl font-bold tracking-tight">
-            {niche?.name ?? "Niche"}
-          </h1>
-        </div>
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-1">
+            <Link
+              href="/niches"
+              className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to niches
+            </Link>
+            <h1 className="text-2xl font-bold tracking-tight">
+              {niche?.name ?? "Niche"}
+            </h1>
+          </div>
 
-        <Link href="/niche/new">
-          <Button variant="outline">Train another</Button>
-        </Link>
-      </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={deleting}
+              onClick={async () => {
+                if (!niche) return;
+                if (!window.confirm(`Delete "${niche.name}"? This cannot be undone.`)) return;
+                setDeleting(true);
+                try {
+                  const res = await fetch(`/api/niches/${niche.id}`, { method: "DELETE" });
+                  if (!res.ok) throw new Error("Failed to delete");
+                  router.push("/niches");
+                } catch {
+                  setError("Failed to delete niche");
+                  setDeleting(false);
+                }
+              }}
+            >
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            </Button>
+            <Link href="/niche/new">
+              <Button variant="outline" size="sm">Train another</Button>
+            </Link>
+          </div>
+        </div>
 
       {loading && (
         <Card>

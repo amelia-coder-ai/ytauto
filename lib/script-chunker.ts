@@ -1,4 +1,5 @@
 import { ScriptSceneRow } from "./supabase";
+import { callAI } from "@/lib/ai";
 
 export interface ScriptChunk {
   slotIndex: number;
@@ -13,62 +14,66 @@ export interface ModalScene {
 
 /**
  * Chunks a script's scenes into image intervals.
- * Each chunk spans imageIntervalSeconds of content.
+ * Each chunk spans up to imageIntervalSeconds of content.
+ * Scenes longer than the interval are split proportionally across multiple chunks.
  */
-export function chunkScript(
+export async function chunkScript(
   scenes: ScriptSceneRow[],
   imageIntervalSeconds: number,
   nicheName: string
-): ScriptChunk[] {
-  const chunks: ScriptChunk[] = [];
-  let currentSlotIndex = 0;
+): Promise<ScriptChunk[]> {
+  // Step 1: split content into timed chunks (sync)
+  const rawChunks: { slotIndex: number; scriptChunk: string }[] = [];
+  let slotIndex = 0;
   let accumulatedSeconds = 0;
-  let currentChunkContent = "";
+  let currentWords: string[] = [];
 
   for (const scene of scenes) {
-    const sceneSeconds = scene.duration_seconds;
+    const words = scene.content.split(/\s+/);
+    const wordsPerSecond = words.length / scene.duration_seconds;
+    let wordIndex = 0;
 
-    // If adding this scene exceeds the interval, finalize current chunk
-    if (
-      accumulatedSeconds > 0 &&
-      accumulatedSeconds + sceneSeconds > imageIntervalSeconds
-    ) {
-      // Save the current chunk
-      const imagePrompt = generateImagePrompt(
-        currentChunkContent,
-        nicheName
+    while (wordIndex < words.length) {
+      const remainingCapacity = imageIntervalSeconds - accumulatedSeconds;
+      const wordsForCapacity = Math.max(
+        1,
+        Math.round(remainingCapacity * wordsPerSecond)
       );
-      chunks.push({
-        slotIndex: currentSlotIndex,
-        scriptChunk: currentChunkContent.trim(),
-        imagePrompt,
-      });
+      const wordsToTake = Math.min(wordsForCapacity, words.length - wordIndex);
 
-      // Reset for next chunk
-      currentSlotIndex++;
-      accumulatedSeconds = 0;
-      currentChunkContent = "";
+      currentWords.push(...words.slice(wordIndex, wordIndex + wordsToTake));
+      wordIndex += wordsToTake;
+      accumulatedSeconds += wordsToTake / wordsPerSecond;
+
+      if (accumulatedSeconds >= imageIntervalSeconds || wordIndex >= words.length) {
+        const content = currentWords.join(" ").trim();
+        if (content) {
+          rawChunks.push({ slotIndex, scriptChunk: content });
+          slotIndex++;
+        }
+        currentWords = [];
+        accumulatedSeconds = 0;
+      }
     }
-
-    // Add scene content to current chunk
-    currentChunkContent += (currentChunkContent ? " " : "") + scene.content;
-    accumulatedSeconds += sceneSeconds;
   }
 
-  // Add the final chunk if there's remaining content
-  if (currentChunkContent.trim()) {
-    const imagePrompt = generateImagePrompt(
-      currentChunkContent,
-      nicheName
+  // Step 2: generate all image prompts in parallel batches (concurrency limit)
+  const batchSize = 5;
+  const prompts: string[] = [];
+  for (let i = 0; i < rawChunks.length; i += batchSize) {
+    const batch = rawChunks.slice(i, i + batchSize);
+    const batchPrompts = await Promise.all(
+      batch.map((chunk) => generateImagePrompt(chunk.scriptChunk, nicheName))
     );
-    chunks.push({
-      slotIndex: currentSlotIndex,
-      scriptChunk: currentChunkContent.trim(),
-      imagePrompt,
-    });
+    prompts.push(...batchPrompts);
   }
 
-  return chunks;
+  // Step 3: combine
+  return rawChunks.map((chunk, i) => ({
+    slotIndex: chunk.slotIndex,
+    scriptChunk: chunk.scriptChunk,
+    imagePrompt: prompts[i],
+  }));
 }
 
 /**
@@ -82,13 +87,99 @@ export function formatChunksForModal(chunks: ScriptChunk[]): ModalScene[] {
 }
 
 /**
- * Generates an image prompt based on script content and niche.
- * This is a placeholder; customize based on your needs.
+ * Fallback: extract visual keywords from content to build a text-free prompt.
  */
-function generateImagePrompt(scriptContent: string, nicheName: string): string {
-  // Extract key terms from the script
-  const words = scriptContent.split(/\s+/).filter((w) => w.length > 3);
-  const keyTerms = words.slice(0, 3).join(", ");
+function buildFallbackPrompt(scriptContent: string, nicheName: string): string {
+  const words = scriptContent.split(/\s+/);
+  const stopWords = new Set([
+    "the","a","an","is","are","was","were","be","been","being","have","has","had",
+    "do","does","did","will","would","could","should","may","might","shall","can",
+    "to","of","in","for","on","with","at","by","from","as","into","through","during",
+    "before","after","above","below","between","out","off","over","under","again",
+    "further","then","once","here","there","when","where","why","how","all","each",
+    "every","both","few","more","most","other","some","such","no","nor","not","only",
+    "own","same","so","than","too","very","just","because","but","and","or","if",
+    "while","about","up","like","this","that","it","its","you","your","we","our",
+    "they","them","their","he","him","his","she","her","what","which","who","these",
+    "those","not","don't","doesn't","didn't","won't","can't","isn't","aren't",
+  ]);
+  const keywords = words
+    .map((w) => w.replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g, ""))
+    .filter((w) => w.length > 3 && !stopWords.has(w.toLowerCase()))
+    .slice(0, 8);
 
-  return `${nicheName} video scene: ${keyTerms || scriptContent.substring(0, 50)}`;
+  const visualDesc = keywords.length >= 3
+    ? `${nicheName} themed scene featuring ${keywords.join(", ")}`
+    : `${nicheName} themed scene`;
+
+  return `${visualDesc}, cinematic 4K, dramatic lighting, photorealistic, no text, no watermarks, no subtitles, no words, no captions, no letters`;
+}
+
+/**
+ * Generates a structured image prompt using AI (Ollama → Gemini fallback).
+ * Falls back to keyword-based prompt if all AI providers fail.
+ */
+async function generateImagePrompt(scriptContent: string, nicheName: string): Promise<string> {
+  const systemPrompt = `You are a visual director for YouTube videos.
+Given a script chunk, return ONLY a valid JSON object with NO extra text.
+
+Rules for image_prompt:
+- Describe ONLY what to show visually, NOT what is being said
+- Never include any text, words, letters in the image description
+- Make it cinematic and visually engaging
+
+Return this exact JSON structure:
+{
+  "scene": "brief visual description",
+  "main_subject": "who or what is shown with visual details",
+  "action": "what subject is doing",
+  "environment": "location and background",
+  "camera": "angle and framing"
+}`;
+
+  const userPrompt = `Script chunk: "${scriptContent.substring(0, 500)}"
+Niche: "${nicheName}"
+Return JSON only. No markdown.`;
+
+  const providers: { provider: "ollama" | "gemini"; label: string }[] = [
+    { provider: "ollama", label: "Ollama" },
+  ];
+  if (process.env.GEMINI_API_KEY) {
+    providers.push({ provider: "gemini", label: "Gemini" });
+  }
+
+  for (const { provider, label } of providers) {
+    try {
+      const response = await callAI(userPrompt, systemPrompt, provider);
+      const text = response.content.trim();
+
+      const jsonStart = text.indexOf("{");
+      const jsonEnd = text.lastIndexOf("}");
+      if (jsonStart === -1 || jsonEnd === -1) {
+        console.warn(`[generateImagePrompt] ${label}: no JSON found`);
+        continue;
+      }
+
+      const parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1)) as {
+        scene?: string;
+        main_subject?: string;
+        action?: string;
+        environment?: string;
+        camera?: string;
+      };
+
+      const parts = [parsed.scene, parsed.main_subject, parsed.action, parsed.environment, parsed.camera].filter(Boolean);
+      if (parts.length === 0) {
+        console.warn(`[generateImagePrompt] ${label}: empty description`);
+        continue;
+      }
+
+      return [...parts, "cinematic 4K, dramatic lighting, photorealistic", "no text, no watermarks, no subtitles, no words, no captions, no letters"].join(", ");
+    } catch (err) {
+      console.warn(`[generateImagePrompt] ${label} failed:`, err);
+    }
+  }
+
+  console.warn("[generateImagePrompt] all AI providers failed, using fallback");
+  return buildFallbackPrompt(scriptContent, nicheName);
 }

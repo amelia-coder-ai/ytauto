@@ -6,9 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Select } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 
 interface FormData {
@@ -588,7 +586,7 @@ export default function NewVideoPage() {
                 <span className="text-lg">⏱️</span>
                 <div className="text-sm">
                   <p className="font-medium">Processing will take a few minutes</p>
-                  <p className="text-xs text-muted-foreground">You'll be redirected to track progress</p>
+                  <p className="text-xs text-muted-foreground">You&apos;ll be redirected to track progress</p>
                 </div>
               </div>
 

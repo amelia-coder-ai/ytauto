@@ -1,8 +1,9 @@
 import React from 'react';
-import { Composition } from 'remotion';
-import { SubtitleVideo, SubtitleProps } from './SubtitleVideo';
+import { Composition, registerRoot } from 'remotion';
+import type { AnyZodObject } from 'remotion';
+import { SubtitleVideo, type SubtitleProps } from './SubtitleVideo';
 
-export default function Root() {
+const Root: React.FC = () => {
   const defaultProps: SubtitleProps = {
     scenes: [],
     totalDurationSeconds: 10,
@@ -13,7 +14,7 @@ export default function Root() {
   };
 
   return (
-    <Composition<SubtitleProps>
+    <Composition<AnyZodObject, SubtitleProps>
       id="Subtitles"
       component={SubtitleVideo}
       durationInFrames={300}
@@ -23,4 +24,6 @@ export default function Root() {
       defaultProps={defaultProps}
     />
   );
-}
+};
+
+registerRoot(Root);

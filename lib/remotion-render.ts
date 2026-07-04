@@ -1,7 +1,7 @@
 import { bundle } from '@remotion/bundler';
 import { renderMedia, selectComposition } from '@remotion/renderer';
 import path from 'path';
-import { SubtitleProps } from '@/remotion/SubtitleVideo';
+import type { SubtitleProps } from '@/remotion/SubtitleVideo';
 
 export async function renderSubtitles(
   props: SubtitleProps,
@@ -18,7 +18,7 @@ export async function renderSubtitles(
     const composition = await selectComposition({
       serveUrl: bundled,
       id: 'Subtitles',
-      inputProps: props,
+      inputProps: props as unknown as Record<string, unknown>,
     });
 
     // Step 3: Render the media
@@ -30,7 +30,7 @@ export async function renderSubtitles(
       serveUrl: bundled,
       codec: 'h264',
       outputLocation: outputPath,
-      inputProps: props,
+      inputProps: props as unknown as Record<string, unknown>,
       chromiumOptions: {
         enableMultiProcessOnLinux: true,
       },

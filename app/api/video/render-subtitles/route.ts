@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { writeFile, mkdir } from 'fs/promises';
+import { mkdir } from 'fs/promises';
 import { join } from 'path';
 import { renderSubtitles } from '@/lib/remotion-render';
 import { SubtitleProps } from '@/remotion/SubtitleVideo';
-import { supabaseAdmin } from '@/lib/supabase';
 
 export const maxDuration = 600;
 export const dynamic = 'force-dynamic';
@@ -71,19 +70,13 @@ export async function POST(req: NextRequest) {
     const outputPath = join(videoDir, 'subtitles.mp4');
 
     // Render subtitles video
-    const renderedPath = await renderSubtitles(
+    await renderSubtitles(
       subtitleProps,
       outputPath,
       durationSeconds
     );
 
     const subtitleVideoPath = `/videos/${videoJobId}/subtitles.mp4`;
-
-    // Optionally update video_job in Supabase if you want to track subtitle rendering
-    // await supabaseAdmin
-    //   .from('video_jobs')
-    //   .update({ subtitle_video_url: subtitleVideoPath })
-    //   .eq('id', videoJobId);
 
     return NextResponse.json(
       {

@@ -3,13 +3,10 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { supabaseAdmin } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Select } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 
 interface FormData {
@@ -209,25 +206,10 @@ export default function NewVideoPage() {
     setError('');
 
     try {
-      // Create video_job in Supabase
-      const videoJobId = `vid_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-      const { error: createError } = await supabaseAdmin.from('video_jobs').insert({
-        id: videoJobId,
-        status: 'pending',
-        script_id: formData.scriptId,
-      });
-
-      if (createError) {
-        throw new Error(`Failed to create video job: ${createError.message}`);
-      }
-
-      // Call /api/video/start
       const startRes = await fetch('/api/video/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          videoJobId,
           scriptId: formData.scriptId,
           nicheName: formData.nicheName,
           imageIntervalSeconds: formData.imageIntervalSeconds,
@@ -249,8 +231,9 @@ export default function NewVideoPage() {
         throw new Error(data.error || 'Failed to start video generation');
       }
 
+      const data = await startRes.json();
       // Redirect to status page
-      router.push(`/dashboard/video/${videoJobId}/status`);
+      router.push(`/dashboard/video/${data.videoJobId}/status`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       setError(msg);
@@ -593,7 +576,7 @@ export default function NewVideoPage() {
               <span className="text-lg">⏱️</span>
               <div className="text-sm">
                 <p className="font-medium">Processing will take a few minutes</p>
-                <p className="text-xs text-muted-foreground">You'll be redirected to track progress</p>
+                <p className="text-xs text-muted-foreground">You&apos;ll be redirected to track progress</p>
               </div>
             </div>
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { randomUUID } from 'crypto';
 import { videoQueue } from '@/lib/queue/video-queue';
 import { getSupabaseAdmin } from '@/lib/supabase';
 
@@ -81,7 +82,7 @@ export async function POST(req: NextRequest) {
 
   try {
     // Generate video job ID
-    const videoJobId = `vid_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const videoJobId = randomUUID();
 
     // Create video_job record in Supabase
     const supabaseAdmin = getSupabaseAdmin();

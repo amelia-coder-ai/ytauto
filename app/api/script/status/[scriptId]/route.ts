@@ -147,7 +147,7 @@ export async function GET(
   const percentComplete =
     totalScenes > 0 ? Math.round((completedScenes / totalScenes) * 100) : 0;
 
-  let status = resolveScriptStatus(script.status as string, scenes);
+  const status = resolveScriptStatus(script.status as string, scenes);
 
   if (status !== script.status && script.status === "generating") {
     await admin

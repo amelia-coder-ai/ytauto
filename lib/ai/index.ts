@@ -343,7 +343,7 @@ export async function callOpenRouter(
           model: OPENROUTER_MODEL,
           messages,
           ...(reasoning ? { reasoning: { enabled: true } } : {}),
-          max_tokens: 2048,
+          max_tokens: 8192,
         }),
         signal: controller.signal,
       }

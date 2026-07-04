@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { callAI, getProviderFromHeader, type AIProvider } from "@/lib/ai";
+import { callOpenRouter, callAI } from "@/lib/ai";
 import { supabaseAdmin } from "@/lib/supabase";
 
 /**
@@ -59,7 +59,7 @@ ${joinedTranscripts}`;
 
 export async function POST(req: NextRequest) {
   // 1. Parse and validate the request body
-  let body: { nicheId?: string; transcripts?: string[]; provider?: AIProvider };
+  let body: { nicheId?: string; transcripts?: string[] };
 
   try {
     body = await req.json();
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { nicheId, transcripts, provider: bodyProvider } = body;
+  const { nicheId, transcripts } = body;
 
   if (!nicheId || typeof nicheId !== "string") {
     return NextResponse.json(
@@ -87,30 +87,41 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 2. Resolve provider: body > header > env default
-  const provider = bodyProvider ?? getProviderFromHeader(req);
-
-  // 3. Call the AI with the system and user prompts
+  // 2. Call AI — OpenRouter (fast) primary, Gemini fallback
   const userPrompt = buildUserPrompt(transcripts);
+  const userPromptTruncated = userPrompt.length > 60000
+    ? userPrompt.slice(0, 30000) + "\n\n[...truncated...]\n\n" + userPrompt.slice(-30000)
+    : userPrompt;
 
-  let aiContent: string;
+  let aiContent = "";
+  let aiError: string | null = null;
+
   try {
-    const aiResponse = await callAI(userPrompt, SYSTEM_PROMPT, provider);
-    aiContent = aiResponse.content;
+    const res = await callOpenRouter(userPromptTruncated, SYSTEM_PROMPT, { reasoning: false, timeoutMs: 120_000 });
+    aiContent = res.content;
   } catch (err) {
-    const message = err instanceof Error ? err.message : "AI call failed";
-    console.error("AI call error:", message);
-    return NextResponse.json({ error: message }, { status: 502 });
+    aiError = err instanceof Error ? err.message : "OpenRouter call failed";
+    console.warn("[niche/analyze] OpenRouter failed:", aiError);
+  }
+
+  if (!aiContent && process.env.GEMINI_API_KEY) {
+    try {
+      const res = await callAI(userPromptTruncated, SYSTEM_PROMPT, "gemini");
+      aiContent = res.content;
+    } catch (err) {
+      aiError = err instanceof Error ? err.message : "Gemini call failed";
+      console.warn("[niche/analyze] Gemini fallback failed:", aiError);
+    }
   }
 
   if (!aiContent) {
     return NextResponse.json(
-      { error: "AI returned empty content" },
+      { error: aiError ?? "AI returned empty content" },
       { status: 502 }
     );
   }
 
-  // 3. Parse the AI JSON response (strip potential code fences)
+  // 4. Parse the AI JSON response (strip potential code fences)
   let parsed: NicheProfileAIResult;
   try {
     const cleaned = aiContent
@@ -149,7 +160,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 4. Save the niche profile to Supabase
+  // 5. Save the niche profile to Supabase
   const [tone, style] = parsed.tone_and_style.includes(",")
     ? parsed.tone_and_style.split(",").map((s) => s.trim())
     : [parsed.tone_and_style, ""];
@@ -184,7 +195,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 5. Update the niche status to "ready"
+  // 6. Update the niche status to "ready"
   try {
       const { error: statusError } = await supabaseAdmin
       .from("niches")
@@ -201,7 +212,7 @@ export async function POST(req: NextRequest) {
     // Non-fatal — the profile was saved. Log and continue.
   }
 
-  // 6. Return the parsed niche profile
+  // 7. Return the parsed niche profile
   return NextResponse.json({
     nicheId,
     profile: {
