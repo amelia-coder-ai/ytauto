@@ -51,62 +51,24 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   const nicheId = params?.id;
-  console.log("[DELETE niche] Received ID:", JSON.stringify(nicheId));
-
   if (!nicheId) {
     return NextResponse.json({ error: "Missing niche id" }, { status: 400 });
   }
 
   const admin = getSupabaseAdmin();
 
-  // Debug: list all niche IDs to compare
-  const { data: allNiches } = await admin
-    .from("niches")
-    .select("id, name");
+  // Delete child rows first (FK order), then the niche itself
+  const { error: scriptsErr } = await admin.from("scripts").delete().eq("niche_id", nicheId);
+  if (scriptsErr) return NextResponse.json({ error: "Failed to delete scripts", detail: scriptsErr.message }, { status: 500 });
 
-  if (allNiches) {
-    console.log("[DELETE niche] All niches in DB:", JSON.stringify(allNiches.map(n => ({ id: n.id, name: n.name }))));
-  }
+  const { error: videosErr } = await admin.from("niche_videos").delete().eq("niche_id", nicheId);
+  if (videosErr) return NextResponse.json({ error: "Failed to delete niche_videos", detail: videosErr.message }, { status: 500 });
 
-  // Verify niche exists
-  const { data: existing, error: existingError } = await admin
-    .from("niches")
-    .select("id")
-    .eq("id", nicheId)
-    .maybeSingle();
-  
-  console.log("[DELETE niche] SELECT result:", JSON.stringify({ existing, existingError: existingError?.message }));
+  const { error: profileErr } = await admin.from("niche_profile").delete().eq("niche_id", nicheId);
+  if (profileErr) return NextResponse.json({ error: "Failed to delete niche_profile", detail: profileErr.message }, { status: 500 });
 
-  if (existingError) {
-    return NextResponse.json(
-      { error: "Failed to verify niche", detail: existingError.message },
-      { status: 500 }
-    );
-  }
-
-  if (!existing) {
-    return NextResponse.json(
-      { error: "Niche not found", debug: { nicheId, dbIds: allNiches?.map(n => n.id) } },
-      { status: 404 }
-    );
-  }
-
-  // Delete related records (best effort)
-  await admin.from("niche_videos").delete().eq("niche_id", nicheId);
-  await admin.from("niche_profile").delete().eq("niche_id", nicheId);
-
-  // Delete the niche
-  const { error: nicheError } = await admin
-    .from("niches")
-    .delete()
-    .eq("id", nicheId);
-
-  if (nicheError) {
-    return NextResponse.json(
-      { error: "Failed to delete niche", detail: nicheError.message },
-      { status: 500 }
-    );
-  }
+  const { error: nicheErr } = await admin.from("niches").delete().eq("id", nicheId);
+  if (nicheErr) return NextResponse.json({ error: "Failed to delete niche", detail: nicheErr.message }, { status: 500 });
 
   return NextResponse.json({ success: true });
 }

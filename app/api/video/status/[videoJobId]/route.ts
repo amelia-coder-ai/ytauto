@@ -1,19 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
-
-interface VideoJob {
-  id: string;
-  status: string;
-  completed_scenes?: number;
-  total_scenes?: number;
-  output_video_url?: string;
-  error_message?: string;
-}
+export const revalidate = 0;
 
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { videoJobId: string } }
 ) {
   const { videoJobId } = params;
@@ -25,22 +16,36 @@ export async function GET(
     );
   }
 
-  try {
-    // Fetch video_job from Supabase
-    const { data: videoJob, error } = await supabaseAdmin
-      .from('video_jobs')
-      .select('*')
-      .eq('id', videoJobId)
-      .single();
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    if (error || !videoJob) {
+  try {
+    const res = await fetch(
+      `${url}/rest/v1/video_jobs?select=id,status,completed_scenes,total_scenes,output_video_url,error_message&id=eq.${videoJobId}`,
+      {
+        headers: {
+          apikey: key!,
+          Authorization: `Bearer ${key!}`,
+        },
+        cache: 'no-store',
+      }
+    );
+
+    if (!res.ok) {
+      const text = await res.text();
+      return NextResponse.json({ error: text }, { status: 502 });
+    }
+
+    const rows = await res.json();
+    const job = rows?.[0];
+
+    if (!job) {
       return NextResponse.json(
-        { error: 'Video job not found', detail: error?.message },
+        { error: 'Video job not found' },
         { status: 404 }
       );
     }
 
-    const job = videoJob as VideoJob;
     const completedScenes = job.completed_scenes || 0;
     const totalScenes = job.total_scenes || 0;
     const percentComplete =
@@ -55,7 +60,7 @@ export async function GET(
         outputVideoUrl: job.output_video_url || null,
         errorMessage: job.error_message || null,
       },
-      { status: 200 }
+      { status: 200, headers: { 'Cache-Control': 'no-store' } }
     );
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : 'Unknown error';

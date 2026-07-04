@@ -78,6 +78,9 @@ export default function VideoStatusPage() {
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    let stopped = false;
+
     const fetchStatus = async () => {
       try {
         const res = await fetch(`/api/video/status/${videoJobId}`);
@@ -85,33 +88,38 @@ export default function VideoStatusPage() {
           throw new Error('Failed to fetch status');
         }
         const data = await res.json();
+        if (stopped) return;
         setStatus(data);
         setError('');
 
         // Stop polling if generation is complete or failed
         if (data.status === 'ready' || data.status === 'failed') {
           setAutoRefresh(false);
+          if (interval) {
+            clearInterval(interval);
+            interval = null;
+          }
         }
       } catch (err) {
+        if (stopped) return;
         const msg = err instanceof Error ? err.message : 'Unknown error';
         setError(msg);
       } finally {
-        setLoading(false);
+        if (!stopped) setLoading(false);
       }
     };
 
     fetchStatus();
 
-    // Set up polling interval
-    let interval: NodeJS.Timeout | null = null;
-    if (autoRefresh && !loading) {
+    if (autoRefresh) {
       interval = setInterval(fetchStatus, 3000);
     }
 
     return () => {
+      stopped = true;
       if (interval) clearInterval(interval);
     };
-  }, [videoJobId, autoRefresh, loading]);
+  }, [videoJobId, autoRefresh]);
 
   if (loading && !status) {
     return (

@@ -1,23 +1,32 @@
 import { NextResponse } from "next/server";
 
-import { getSupabaseAdmin } from "@/lib/supabase";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET() {
-  const admin = getSupabaseAdmin();
-  const { data, error } = await admin
-    .from("niches")
-    .select("id, name, description, status, created_at")
-    .order("created_at", { ascending: false });
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (error) {
-    console.error("[niches/list] DB error:", error.message);
-    return NextResponse.json(
-      { error: "Failed to fetch niches", detail: error.message },
-      { status: 500 }
-    );
+  const res = await fetch(
+    `${url}/rest/v1/niches?select=id,name,description,status,created_at&order=created_at.desc`,
+    {
+      headers: {
+        apikey: key!,
+        Authorization: `Bearer ${key!}`,
+      },
+      cache: "no-store",
+    }
+  );
+
+  if (!res.ok) {
+    const text = await res.text();
+    return NextResponse.json({ error: text }, { status: 502 });
   }
 
-  console.log("[niches/list] returning", data?.length ?? 0, "niches");
-  return NextResponse.json({ niches: data ?? [] });
+  const data = await res.json();
+  return NextResponse.json(
+    { niches: data ?? [] },
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }
 

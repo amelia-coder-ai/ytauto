@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Copy, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Check, Copy, Loader2, RefreshCw, Sparkles, Video } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -106,6 +107,7 @@ export default function NewScriptClientPage() {
 }
 
 function NewScriptPageContent() {
+  const router = useRouter();
   const [niches, setNiches] = useState<NicheRow[]>([]);
   const [nichesLoading, setNichesLoading] = useState(true);
   const [selectedNicheId, setSelectedNicheId] = useState("");
@@ -759,6 +761,24 @@ function NewScriptPageContent() {
                   );
                 })}
               </div>
+
+              {scriptStatus === "ready" && scriptId && (
+                <Card className="border-green-200 bg-green-50/30">
+                  <CardContent className="flex items-center justify-between py-4">
+                    <div>
+                      <p className="text-sm font-medium text-green-800">Script ready</p>
+                      <p className="text-xs text-green-700">Create a video from this script.</p>
+                    </div>
+                    <Button
+                      className="gap-2"
+                      onClick={() => router.push(`/video/new?scriptId=${scriptId}`)}
+                    >
+                      <Video className="h-4 w-4" />
+                      Create Video
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
             </>
           )}
         </div>
