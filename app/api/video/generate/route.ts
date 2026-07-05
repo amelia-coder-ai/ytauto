@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { supabaseAdmin } from "@/lib/supabase";
-import { chunkScript, formatChunksForModal } from "@/lib/script-chunker";
+import { chunkScript, formatChunksForModal, CameraEffect, CameraEffectMode, OverlayEffect } from "@/lib/script-chunker";
 
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
@@ -16,6 +16,9 @@ interface VideoGenerateBody {
   ttsSpeed: number;
   imageWidth?: number;
   imageHeight?: number;
+  cameraEffect?: CameraEffect;
+  cameraEffectMode?: CameraEffectMode;
+  overlayEffect?: OverlayEffect;
 }
 
 export async function POST(req: NextRequest) {
@@ -36,6 +39,9 @@ export async function POST(req: NextRequest) {
     ttsSpeed,
     imageWidth = 1920,
     imageHeight = 1080,
+    cameraEffect = "none",
+    cameraEffectMode = "same",
+    overlayEffect = "none",
   } = body;
 
   // Validate required fields
@@ -106,8 +112,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Step 2: Call chunkScript()
-    const chunks = await chunkScript(scenes, imageIntervalSeconds, nicheName);
+    // Step 2: Call chunkScript() with camera effect params
+    const chunks = await chunkScript(scenes, imageIntervalSeconds, nicheName, cameraEffect, cameraEffectMode);
 
     // Step 3: Call formatChunksForModal()
     const modalScenes = formatChunksForModal(chunks);
@@ -157,55 +163,44 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Step 6: Call Modal.com endpoint with 30-minute timeout
-    const modalEndpoint = process.env.MODAL_ENDPOINT_URL?.trim();
-    if (
-      !modalEndpoint ||
-      modalEndpoint.includes("your-username--explainer-videos-flask-app")
-    ) {
-      const errorMsg =
-        "MODAL_ENDPOINT_URL is not configured. Set it to your deployed Modal video generation endpoint.";
-      await supabaseAdmin
-        .from("video_jobs")
-        .update({
-          status: "failed",
-          error_message: errorMsg,
-        })
-        .eq("id", videoJobId);
-      return NextResponse.json({ error: errorMsg }, { status: 500 });
-    }
+    // Step 6: Acquire video (Modal API or dev skip)
+    const skipModal = process.env.SKIP_MODAL === "true";
+    const testVideoSource = process.env.TEST_VIDEO_SOURCE;
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30 * 60 * 1000);
+    let outputVideoUrl: string;
 
-    let videoBuffer: Buffer;
-    try {
-      const response = await fetch(
-        `${modalEndpoint}/generate-video`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify([
-            {
-              scenes: modalScenes,
-              voice: voice,
-              tts_speed: ttsSpeed,
-              image_width: imageWidth,
-              image_height: imageHeight,
-              return_base64: false,
-            },
-          ]),
-          signal: controller.signal,
-        }
+    if (skipModal && testVideoSource) {
+      // DEV MODE: Copy existing video instead of calling Modal
+      const sourceFile = join(
+        process.cwd(),
+        "public",
+        testVideoSource,
+        "final.mp4"
       );
+      console.log(`[DEV] SKIP_MODAL=true, copying from ${sourceFile}`);
 
-      clearTimeout(timeoutId);
+      const { copyFile } = await import("fs/promises");
+      const targetDir = join(
+        process.cwd(),
+        "public",
+        "videos",
+        videoJobId
+      );
+      await mkdir(targetDir, { recursive: true });
+      const targetFile = join(targetDir, "final.mp4");
+      await copyFile(sourceFile, targetFile);
 
-      if (!response.ok) {
-        const errorBody = await response.text();
-        const errorMsg = `Modal API error: ${response.statusText} - ${errorBody}`;
+      outputVideoUrl = `/videos/${videoJobId}/final.mp4`;
+      console.log(`[DEV] Copied to ${outputVideoUrl}`);
+    } else {
+      // Normal flow: Call Modal.com endpoint with 30-minute timeout
+      const modalEndpoint = process.env.MODAL_ENDPOINT_URL?.trim();
+      if (
+        !modalEndpoint ||
+        modalEndpoint.includes("your-username--explainer-videos-flask-app")
+      ) {
+        const errorMsg =
+          "MODAL_ENDPOINT_URL is not configured. Set it to your deployed Modal video generation endpoint.";
         await supabaseAdmin
           .from("video_jobs")
           .update({
@@ -216,40 +211,89 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: errorMsg }, { status: 500 });
       }
 
-      // Step 7: Get video as binary buffer
-      videoBuffer = Buffer.from(await response.arrayBuffer());
-    } catch (err) {
-      clearTimeout(timeoutId);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(
+        () => controller.abort(),
+        30 * 60 * 1000
+      );
 
-      let errorMsg = "Unknown error";
-      if (err instanceof DOMException && err.name === "AbortError") {
-        errorMsg = "Generation timed out";
-      } else if (err instanceof Error) {
-        errorMsg = err.message;
+      let videoBuffer: Buffer;
+      try {
+        const response = await fetch(
+          `${modalEndpoint}/generate-video`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify([
+              {
+                scenes: modalScenes,
+                voice: voice,
+                tts_speed: ttsSpeed,
+                image_width: imageWidth,
+                image_height: imageHeight,
+                overlay_effect: overlayEffect,
+                return_base64: false,
+              },
+            ]),
+            signal: controller.signal,
+          }
+        );
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          const errorBody = await response.text();
+          const errorMsg = `Modal API error: ${response.statusText} - ${errorBody}`;
+          await supabaseAdmin
+            .from("video_jobs")
+            .update({
+              status: "failed",
+              error_message: errorMsg,
+            })
+            .eq("id", videoJobId);
+          return NextResponse.json({ error: errorMsg }, { status: 500 });
+        }
+
+        videoBuffer = Buffer.from(await response.arrayBuffer());
+      } catch (err) {
+        clearTimeout(timeoutId);
+
+        let errorMsg = "Unknown error";
+        if (err instanceof DOMException && err.name === "AbortError") {
+          errorMsg = "Generation timed out";
+        } else if (err instanceof Error) {
+          errorMsg = err.message;
+        }
+
+        await supabaseAdmin
+          .from("video_jobs")
+          .update({
+            status: "failed",
+            error_message: errorMsg,
+          })
+          .eq("id", videoJobId);
+
+        return NextResponse.json(
+          { error: `Modal API call failed: ${errorMsg}` },
+          { status: 500 }
+        );
       }
 
-      await supabaseAdmin
-        .from("video_jobs")
-        .update({
-          status: "failed",
-          error_message: errorMsg,
-        })
-        .eq("id", videoJobId);
-
-      return NextResponse.json(
-        { error: `Modal API call failed: ${errorMsg}` },
-        { status: 500 }
+      // Save Modal-generated video
+      const videoDir = join(
+        process.cwd(),
+        "public",
+        "videos",
+        videoJobId
       );
+      await mkdir(videoDir, { recursive: true });
+      const videoPath = join(videoDir, "final.mp4");
+      await writeFile(videoPath, videoBuffer);
+
+      outputVideoUrl = `/videos/${videoJobId}/final.mp4`;
     }
-
-    // Step 8: Save video to /public/videos/{videoJobId}/final.mp4
-    const videoDir = join(process.cwd(), "public", "videos", videoJobId);
-    await mkdir(videoDir, { recursive: true });
-
-    const videoPath = join(videoDir, "final.mp4");
-    await writeFile(videoPath, videoBuffer);
-
-    const outputVideoUrl = `/videos/${videoJobId}/final.mp4`;
 
     // Step 9: Update video_job with final status
     const { error: updateCompleteError } = await supabaseAdmin
@@ -295,7 +339,7 @@ export async function POST(req: NextRequest) {
           error_message: errorMsg,
         })
         .eq("id", videoJobId);
-    } catch {} // ignore cleanup error
+    } catch { } // ignore cleanup error
 
     return NextResponse.json(
       { error: "Video generation failed", detail: errorMsg },

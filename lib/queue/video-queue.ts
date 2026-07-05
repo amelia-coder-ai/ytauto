@@ -17,12 +17,9 @@ export interface VideoJobData {
   ttsSpeed: number;
   imageWidth?: number;
   imageHeight?: number;
-  subtitleSettings?: {
-    highlightColor?: string;
-    highlightScale?: number;
-    fontSize?: number;
-    position?: 'bottom' | 'center';
-  };
+  cameraEffect?: string;
+  cameraEffectMode?: string;
+  overlayEffect?: string;
 }
 
 export const videoQueue = new Queue<VideoJobData>('video-render', {

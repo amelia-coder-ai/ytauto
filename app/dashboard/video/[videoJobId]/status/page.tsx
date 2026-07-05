@@ -19,9 +19,7 @@ interface VideoStatus {
 
 const statusSteps = [
   { id: 1, label: 'Generating', description: 'Creating main video with Modal' },
-  { id: 2, label: 'Rendering', description: 'Rendering subtitle overlay' },
-  { id: 3, label: 'Assembling', description: 'Combining video and subtitles' },
-  { id: 4, label: 'Ready', description: 'Video generation complete' },
+  { id: 2, label: 'Ready', description: 'Video generation complete' },
 ];
 
 const getStatusStep = (status: string): number => {
@@ -31,7 +29,7 @@ const getStatusStep = (status: string): number => {
     case 'generating':
       return 1;
     case 'ready':
-      return 4;
+      return 2;
     case 'failed':
       return -1;
     default:

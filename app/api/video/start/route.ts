@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { videoQueue } from '@/lib/queue/video-queue';
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { CameraEffect, CameraEffectMode, OverlayEffect } from '@/lib/script-chunker';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,12 +14,9 @@ interface StartVideoBody {
   ttsSpeed: number;
   imageWidth?: number;
   imageHeight?: number;
-  subtitleSettings?: {
-    highlightColor?: string;
-    highlightScale?: number;
-    fontSize?: number;
-    position?: 'bottom' | 'center';
-  };
+  cameraEffect?: CameraEffect;
+  cameraEffectMode?: CameraEffectMode;
+  overlayEffect?: OverlayEffect;
 }
 
 export async function POST(req: NextRequest) {
@@ -38,7 +36,9 @@ export async function POST(req: NextRequest) {
     ttsSpeed,
     imageWidth,
     imageHeight,
-    subtitleSettings,
+    cameraEffect = "none",
+    cameraEffectMode = "same",
+    overlayEffect = "none",
   } = body;
 
   // Validate required fields
@@ -108,7 +108,9 @@ export async function POST(req: NextRequest) {
         ttsSpeed,
         imageWidth,
         imageHeight,
-        subtitleSettings,
+        cameraEffect,
+        cameraEffectMode,
+        overlayEffect,
       },
       {
         jobId: videoJobId,

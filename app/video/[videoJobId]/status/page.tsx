@@ -19,9 +19,7 @@ interface VideoStatus {
 
 const statusSteps = [
   { id: 1, label: 'Generating', description: 'Creating main video with Modal' },
-  { id: 2, label: 'Rendering', description: 'Rendering subtitle overlay' },
-  { id: 3, label: 'Assembling', description: 'Combining video and subtitles' },
-  { id: 4, label: 'Ready', description: 'Video generation complete' },
+  { id: 2, label: 'Ready', description: 'Video generation complete' },
 ];
 
 const getStatusStep = (status: string): number => {
@@ -30,12 +28,8 @@ const getStatusStep = (status: string): number => {
       return 0;
     case 'generating':
       return 1;
-    case 'rendering':
-      return 2;
-    case 'assembling':
-      return 3;
     case 'ready':
-      return 4;
+      return 2;
     case 'failed':
       return -1;
     default:
@@ -47,8 +41,6 @@ const getStatusColor = (status: string) => {
   switch (status) {
     case 'pending':
     case 'generating':
-    case 'rendering':
-    case 'assembling':
       return 'bg-blue-100 text-blue-800';
     case 'ready':
       return 'bg-green-100 text-green-800';
@@ -63,8 +55,6 @@ const getStatusIcon = (status: string) => {
   switch (status) {
     case 'pending':
     case 'generating':
-    case 'rendering':
-    case 'assembling':
       return '⏳';
     case 'ready':
       return '✅';

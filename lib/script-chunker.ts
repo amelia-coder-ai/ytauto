@@ -1,15 +1,42 @@
 import { ScriptSceneRow } from "./supabase";
 import { callAI } from "@/lib/ai";
 
+export type CameraEffect = 'none' | 'zoom-in' | 'zoom-out' | 'pan-left' | 'pan-right' | 'pan-up' | 'pan-down';
+
+export type CameraEffectMode = 'same' | 'random';
+
+export type OverlayEffect = 'none' | 'particles' | 'old-film';
+
 export interface ScriptChunk {
   slotIndex: number;
   scriptChunk: string;
   imagePrompt: string;
+  effect: CameraEffect;
 }
 
 export interface ModalScene {
   narration: string;
   image_prompt: string;
+  effect: CameraEffect;
+}
+
+const ALL_CAMERA_EFFECTS: CameraEffect[] = [
+  'zoom-in', 'zoom-out', 'pan-left', 'pan-right', 'pan-up', 'pan-down',
+];
+
+export function pickCameraEffect(
+  index: number,
+  total: number,
+  mode: CameraEffectMode,
+  fixedEffect: CameraEffect,
+): CameraEffect {
+  if (mode === 'same' || total === 0) {
+    return fixedEffect;
+  }
+  // random mode: pick deterministically based on index to keep it stable
+  const seed = index * 2654435761 + 0xdeadbeef;
+  const idx = Math.abs(seed) % ALL_CAMERA_EFFECTS.length;
+  return ALL_CAMERA_EFFECTS[idx];
 }
 
 /**
@@ -20,7 +47,9 @@ export interface ModalScene {
 export async function chunkScript(
   scenes: ScriptSceneRow[],
   imageIntervalSeconds: number,
-  nicheName: string
+  nicheName: string,
+  cameraEffect: CameraEffect = 'none',
+  cameraEffectMode: CameraEffectMode = 'same',
 ): Promise<ScriptChunk[]> {
   // Step 1: split content into timed chunks (sync)
   const rawChunks: { slotIndex: number; scriptChunk: string }[] = [];
@@ -68,11 +97,12 @@ export async function chunkScript(
     prompts.push(...batchPrompts);
   }
 
-  // Step 3: combine
+  // Step 3: combine with effects
   return rawChunks.map((chunk, i) => ({
     slotIndex: chunk.slotIndex,
     scriptChunk: chunk.scriptChunk,
     imagePrompt: prompts[i],
+    effect: pickCameraEffect(i, rawChunks.length, cameraEffectMode, cameraEffect),
   }));
 }
 
@@ -83,6 +113,7 @@ export function formatChunksForModal(chunks: ScriptChunk[]): ModalScene[] {
   return chunks.map((chunk) => ({
     narration: chunk.scriptChunk,
     image_prompt: chunk.imagePrompt,
+    effect: chunk.effect,
   }));
 }
 

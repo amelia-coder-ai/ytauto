@@ -1,7 +1,6 @@
 import 'dotenv/config';
 import { Worker } from 'bullmq';
 import { createClient } from '@supabase/supabase-js';
-import { getVideoDuration } from '@/lib/video-assembler';
 import { VideoJobData } from './video-queue';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -27,7 +26,7 @@ const connection = new Redis(
 export const videoWorker = new Worker<VideoJobData>(
   'video-render',
   async (job) => {
-    const { videoJobId, scriptId, nicheName, imageIntervalSeconds, voice, ttsSpeed, imageWidth, imageHeight, subtitleSettings } = job.data;
+    const { videoJobId, scriptId, nicheName, imageIntervalSeconds, voice, ttsSpeed, imageWidth, imageHeight, cameraEffect, cameraEffectMode, overlayEffect } = job.data;
 
     try {
       console.log(`[Worker] Starting video generation for job ${videoJobId}`);
@@ -61,6 +60,9 @@ export const videoWorker = new Worker<VideoJobData>(
             ttsSpeed,
             imageWidth: imageWidth || 1920,
             imageHeight: imageHeight || 1080,
+            cameraEffect: cameraEffect || 'none',
+            cameraEffectMode: cameraEffectMode || 'same',
+            overlayEffect: overlayEffect || 'none',
           }),
         }
       );
@@ -74,80 +76,12 @@ export const videoWorker = new Worker<VideoJobData>(
       const generateData = await generateRes.json();
       console.log(`[Worker] Modal video generated: ${generateData.outputVideoUrl}`);
 
-      // Step 3: Get video duration
-      const videoPath = `${process.cwd()}/public${generateData.outputVideoUrl}`;
-      const duration = await getVideoDuration(videoPath);
-      console.log(`[Worker] Video duration: ${duration}s`);
-
-      // Step 4: Call /api/video/render-subtitles (Remotion rendering)
-      console.log(`[Worker] Calling video/render-subtitles for ${videoJobId}`);
-
-      // First, fetch script scenes to build subtitle content
-      const { data: scenes, error: scenesError } = await supabaseAdmin
-        .from('script_scenes')
-        .select('*')
-        .eq('script_id', scriptId)
-        .order('scene_number', { ascending: true });
-
-      if (scenesError || !scenes) {
-        throw new Error(`Failed to fetch scenes: ${scenesError?.message}`);
-      }
-
-      const subtitleRes = await fetch(
-        `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/video/render-subtitles`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            videoJobId,
-            scenes: scenes.map((s) => ({
-              content: s.content,
-              durationSeconds: s.duration_seconds,
-            })),
-            subtitleSettings: subtitleSettings || {},
-            durationSeconds: duration,
-          }),
-        }
-      );
-
-      if (!subtitleRes.ok) {
-        throw new Error(
-          `Subtitle rendering failed: ${subtitleRes.statusText} - ${await subtitleRes.text()}`
-        );
-      }
-
-      const subtitleData = await subtitleRes.json();
-      console.log(`[Worker] Subtitles rendered: ${subtitleData.subtitleVideoPath}`);
-
-      // Step 5: Call /api/video/assemble (FFmpeg assembly)
-      console.log(`[Worker] Calling video/assemble for ${videoJobId}`);
-      const assembleRes = await fetch(
-        `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/video/assemble`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            videoJobId,
-            subtitleVideoPath: subtitleData.subtitleVideoPath,
-          }),
-        }
-      );
-
-      if (!assembleRes.ok) {
-        throw new Error(
-          `Video assembly failed: ${assembleRes.statusText} - ${await assembleRes.text()}`
-        );
-      }
-
-      const assembleData = await assembleRes.json();
-      console.log(`[Worker] Final video assembled: ${assembleData.finalVideoUrl}`);
-
-      // Step 6: Update video_job with final status
+      // Step 3: Update video_job with final status
       const { error: updateError } = await supabaseAdmin
         .from('video_jobs')
         .update({
           status: 'ready',
-          output_video_url: assembleData.finalVideoUrl,
+          output_video_url: generateData.outputVideoUrl,
         })
         .eq('id', videoJobId);
 
@@ -156,7 +90,7 @@ export const videoWorker = new Worker<VideoJobData>(
       }
 
       console.log(`[Worker] Video generation complete for ${videoJobId}`);
-      return { success: true, videoJobId, finalUrl: assembleData.finalVideoUrl };
+      return { success: true, videoJobId, finalUrl: generateData.outputVideoUrl };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.error(`[Worker] Error for job ${videoJobId}:`, errorMsg);

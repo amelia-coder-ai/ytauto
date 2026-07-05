@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
+import type { CameraEffect, CameraEffectMode, OverlayEffect } from '@/lib/script-chunker';
 
 interface FormData {
   scriptId: string;
@@ -17,13 +18,10 @@ interface FormData {
   resolution: '720p' | '1080p';
   voice: string;
   ttsSpeed: number;
-  enableSubtitles: boolean;
-  enableWordHighlight: boolean;
-  highlightColor: string;
-  highlightScale: number;
-  fontSize: number;
-  subtitlePosition: 'bottom' | 'center';
   watermarkUrl?: string;
+  cameraEffect: CameraEffect;
+  cameraEffectMode: CameraEffectMode;
+  overlayEffect: OverlayEffect;
 }
 
 const initialFormData: FormData = {
@@ -34,12 +32,9 @@ const initialFormData: FormData = {
   resolution: '1080p',
   voice: 'af_heart',
   ttsSpeed: 1.0,
-  enableSubtitles: true,
-  enableWordHighlight: true,
-  highlightColor: '#68C0FF',
-  highlightScale: 115,
-  fontSize: 48,
-  subtitlePosition: 'bottom',
+  cameraEffect: 'none',
+  cameraEffectMode: 'same',
+  overlayEffect: 'none',
 };
 
 interface Script {
@@ -65,12 +60,20 @@ const voices = [
   { id: 'bm_george', name: 'British Male', description: 'Authoritative', flag: '🇬🇧' },
 ];
 
-const presetColors = [
-  '#68C0FF', // blue
-  '#FFD666', // yellow
-  '#52C41A', // green
-  '#FF85C0', // pink
-  '#FFFFFF', // white
+const cameraEffectOptions: { value: CameraEffect; label: string; icon: string }[] = [
+  { value: 'none', label: 'None', icon: '⊞' },
+  { value: 'zoom-in', label: 'Zoom In', icon: '🔍' },
+  { value: 'zoom-out', label: 'Zoom Out', icon: '🔍' },
+  { value: 'pan-left', label: 'Pan Left', icon: '←' },
+  { value: 'pan-right', label: 'Pan Right', icon: '→' },
+  { value: 'pan-up', label: 'Pan Up', icon: '↑' },
+  { value: 'pan-down', label: 'Pan Down', icon: '↓' },
+];
+
+const overlayEffectOptions: { value: OverlayEffect; label: string; icon: string }[] = [
+  { value: 'none', label: 'None', icon: '⊘' },
+  { value: 'particles', label: 'Particles', icon: '✦' },
+  { value: 'old-film', label: 'Old Film', icon: '🎞️' },
 ];
 
 export default function NewVideoPage() {
@@ -152,14 +155,6 @@ export default function NewVideoPage() {
     }
   };
 
-  const handleColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({ ...formData, highlightColor: e.target.value });
-  };
-
-  const handleColorPreset = (color: string) => {
-    setFormData({ ...formData, highlightColor: color });
-  };
-
   const validateStep1 = () => {
     if (!formData.scriptId) {
       setError('Please select a script');
@@ -186,21 +181,11 @@ export default function NewVideoPage() {
     return true;
   };
 
-  const validateStep3 = () => {
-    if (formData.enableSubtitles && !formData.highlightColor) {
-      setError('Please select a highlight color');
-      return false;
-    }
-    setError('');
-    return true;
-  };
-
   const handleContinue = () => {
     if (currentStep === 1 && !validateStep1()) return;
     if (currentStep === 2 && !validateStep2()) return;
-    if (currentStep === 3 && !validateStep3()) return;
 
-    if (currentStep < 4) {
+    if (currentStep < 3) {
       setCurrentStep(currentStep + 1);
     }
   };
@@ -226,12 +211,9 @@ export default function NewVideoPage() {
           ttsSpeed: formData.ttsSpeed,
           imageWidth: formData.resolution === '1080p' ? 1920 : 1280,
           imageHeight: formData.resolution === '1080p' ? 1080 : 720,
-          subtitleSettings: {
-            highlightColor: formData.highlightColor,
-            highlightScale: formData.highlightScale,
-            fontSize: formData.fontSize,
-            position: formData.subtitlePosition,
-          },
+          cameraEffect: formData.cameraEffect,
+          cameraEffectMode: formData.cameraEffectMode,
+          overlayEffect: formData.overlayEffect,
         }),
       });
 
@@ -250,7 +232,7 @@ export default function NewVideoPage() {
     }
   };
 
-  const progressValue = (currentStep / 4) * 100;
+  const progressValue = (currentStep / 3) * 100;
 
   return (
     <div className="min-h-screen bg-background">
@@ -264,7 +246,7 @@ export default function NewVideoPage() {
 
         <div className="space-y-2">
           <div className="flex justify-between text-sm font-medium">
-            <span>Step {currentStep} of 4</span>
+            <span>Step {currentStep} of 3</span>
             <span>{Math.round(progressValue)}%</span>
           </div>
           <Progress value={progressValue} className="h-2" />
@@ -367,6 +349,80 @@ export default function NewVideoPage() {
                     ))}
                   </div>
                 </div>
+
+                {/* Camera Effect */}
+                <div>
+                  <label className="text-sm font-medium">Camera Effect</label>
+                  <p className="mb-2 text-xs text-muted-foreground">Add motion to still images (Ken Burns effect)</p>
+
+                  <div className="mt-2 flex gap-2">
+                    {[
+                      { value: 'none', label: 'No Effect' },
+                      { value: 'same', label: 'Same' },
+                      { value: 'random', label: 'Random' },
+                    ].map((mode) => (
+                      <button
+                        key={mode.value}
+                        onClick={() => {
+                          setFormData({
+                            ...formData,
+                            cameraEffectMode: mode.value as CameraEffectMode,
+                            cameraEffect: mode.value === 'none' ? 'none' : formData.cameraEffect === 'none' ? 'zoom-in' : formData.cameraEffect,
+                          });
+                        }}
+                        className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+                          (mode.value === 'none' && formData.cameraEffect === 'none') ||
+                          (mode.value === 'same' && formData.cameraEffect !== 'none' && formData.cameraEffectMode === 'same') ||
+                          (mode.value === 'random' && formData.cameraEffectMode === 'random')
+                            ? 'bg-blue-600 text-white'
+                            : 'border border-input bg-background hover:bg-accent'
+                        }`}
+                      >
+                        {mode.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {formData.cameraEffectMode === 'same' && formData.cameraEffect !== 'none' && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {cameraEffectOptions.filter(o => o.value !== 'none').map((opt) => (
+                        <button
+                          key={opt.value}
+                          onClick={() => setFormData({ ...formData, cameraEffect: opt.value })}
+                          className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                            formData.cameraEffect === opt.value
+                              ? 'bg-blue-600 text-white'
+                              : 'border border-input bg-background hover:bg-accent'
+                          }`}
+                        >
+                          {opt.icon} {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Overlay Effect */}
+                <div>
+                  <label className="text-sm font-medium">Overlay Effect</label>
+                  <p className="mb-2 text-xs text-muted-foreground">Apply a video overlay on top of the entire video</p>
+
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {overlayEffectOptions.map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setFormData({ ...formData, overlayEffect: opt.value })}
+                        className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+                          formData.overlayEffect === opt.value
+                            ? 'bg-blue-600 text-white'
+                            : 'border border-input bg-background hover:bg-accent'
+                        }`}
+                      >
+                        {opt.icon} {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -430,139 +486,8 @@ export default function NewVideoPage() {
             </div>
           )}
 
-          {/* Step 3: Subtitle Styling */}
-          {currentStep === 3 && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-2xl font-bold">Subtitle Styling</h2>
-                <p className="text-muted-foreground">Customize subtitle appearance</p>
-              </div>
-
-              <Separator />
-
-              <div className="space-y-4">
-                <div className="flex items-center justify-between rounded-lg border p-3">
-                  <label className="font-medium text-sm">Enable Subtitles</label>
-                  <input
-                    type="checkbox"
-                    checked={formData.enableSubtitles}
-                    onChange={(e) => setFormData({ ...formData, enableSubtitles: e.target.checked })}
-                    className="h-4 w-4"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between rounded-lg border p-3">
-                  <label className="font-medium text-sm">Word-by-word Highlight</label>
-                  <input
-                    type="checkbox"
-                    checked={formData.enableWordHighlight}
-                    onChange={(e) => setFormData({ ...formData, enableWordHighlight: e.target.checked })}
-                    className="h-4 w-4"
-                    disabled={!formData.enableSubtitles}
-                  />
-                </div>
-
-                {formData.enableSubtitles && (
-                  <>
-                    <div>
-                      <label className="text-sm font-medium">Highlight Color</label>
-                      <div className="mt-2 flex gap-2">
-                        {presetColors.map((color) => (
-                          <button
-                            key={color}
-                            onClick={() => handleColorPreset(color)}
-                            className={`h-8 w-8 rounded-md border-2 transition-all ${
-                              formData.highlightColor === color ? 'border-gray-800' : 'border-gray-300'
-                            }`}
-                            style={{ backgroundColor: color }}
-                            title={color}
-                          />
-                        ))}
-                      </div>
-                      <div className="mt-2 flex items-center gap-2">
-                        <input
-                          type="color"
-                          value={formData.highlightColor}
-                          onChange={handleColorChange}
-                          className="h-8 w-16 rounded"
-                        />
-                        <input
-                          type="text"
-                          value={formData.highlightColor}
-                          onChange={handleColorChange}
-                          placeholder="#68C0FF"
-                          className="w-24 rounded-md border border-input px-2 py-1 text-sm font-mono"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="text-sm font-medium">Highlight Scale</label>
-                      <div className="mt-2 space-y-3">
-                        <input
-                          type="range"
-                          min="100"
-                          max="150"
-                          step="1"
-                          value={formData.highlightScale}
-                          onChange={(e) => setFormData({ ...formData, highlightScale: parseInt(e.target.value) })}
-                          className="w-full"
-                        />
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-muted-foreground">100%</span>
-                          <span className="text-sm font-medium">{formData.highlightScale}%</span>
-                          <span className="text-xs text-muted-foreground">150%</span>
-                        </div>
-                        <p className="text-xs text-muted-foreground">Recommended: 115-120% for YouTube style</p>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="text-sm font-medium">Font Size</label>
-                      <div className="mt-2 space-y-3">
-                        <input
-                          type="range"
-                          min="32"
-                          max="72"
-                          step="2"
-                          value={formData.fontSize}
-                          onChange={(e) => setFormData({ ...formData, fontSize: parseInt(e.target.value) })}
-                          className="w-full"
-                        />
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-muted-foreground">32px</span>
-                          <span className="text-sm font-medium">{formData.fontSize}px</span>
-                          <span className="text-xs text-muted-foreground">72px</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="text-sm font-medium">Position</label>
-                      <div className="mt-2 flex gap-2">
-                        {(['bottom', 'center'] as const).map((pos) => (
-                          <button
-                            key={pos}
-                            onClick={() => setFormData({ ...formData, subtitlePosition: pos })}
-                            className={`rounded-md px-4 py-2 text-sm font-medium transition-colors capitalize ${
-                              formData.subtitlePosition === pos
-                                ? 'bg-blue-600 text-white'
-                                : 'border border-input bg-background hover:bg-accent'
-                            }`}
-                          >
-                            {pos}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Step 4: Confirm & Generate */}
-          {currentStep === 4 && (
+        {/* Step 3: Confirm & Generate */}
+        {currentStep === 3 && (
             <div className="space-y-6">
               <div>
                 <h2 className="text-2xl font-bold">Confirm & Generate</h2>
@@ -578,7 +503,12 @@ export default function NewVideoPage() {
                   <p>🖼️ Images: <span className="font-medium">every {formData.imageIntervalSeconds}s</span></p>
                   <p>🎙️ Voice: <span className="font-medium">{voices.find(v => v.id === formData.voice)?.name}</span></p>
                   <p>📺 Resolution: <span className="font-medium">{formData.resolution}</span></p>
-                  <p>💬 Subtitles: <span className="font-medium">{formData.enableSubtitles ? 'Enabled' : 'Disabled'}</span></p>
+                  <p>🎥 Camera Effect: <span className="font-medium">
+                    {formData.cameraEffect === 'none'
+                      ? 'None'
+                      : `${formData.cameraEffectMode === 'random' ? 'Random ' : ''}${cameraEffectOptions.find(o => o.value === formData.cameraEffect)?.label || 'None'}`}
+                  </span></p>
+                  <p>✨ Overlay: <span className="font-medium">{overlayEffectOptions.find(o => o.value === formData.overlayEffect)?.label || 'None'}</span></p>
                 </div>
               </Card>
 
@@ -615,7 +545,7 @@ export default function NewVideoPage() {
             Back
           </Button>
 
-          {currentStep < 4 ? (
+          {currentStep < 3 ? (
             <Button onClick={handleContinue} className="bg-blue-600 hover:bg-blue-700">
               Continue
             </Button>
