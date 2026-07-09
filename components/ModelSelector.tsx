@@ -2,41 +2,37 @@
 
 import * as React from "react";
 
-/** Canonical provider identifiers used everywhere. */
-export type AIProvider = "gemini" | "openai" | "claude" | "ollama";
+export type AIProvider = "vercel-ai-gateway" | "openrouter" | "deepseek" | "ollama";
 
-/** Display-friendly metadata for each provider. */
 interface ProviderOption {
   value: AIProvider;
   label: string;
   badge: string;
-  /** Tailwind classes for the badge colour. */
   badgeClass: string;
-  /** Short description shown in the dropdown. */
   description: string;
 }
 
 const PROVIDERS: ProviderOption[] = [
   {
-    value: "gemini",
-    label: "Gemini",
-    badge: "Free",
-    badgeClass: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
-    description: "Google Gemini 2.5 Flash — fast, free tier",
-  },
-  {
-    value: "openai",
-    label: "GPT-4.1-mini",
-    badge: "Cheap",
+    value: "vercel-ai-gateway",
+    label: "Vercel AI Gateway",
+    badge: "Gateway",
     badgeClass: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-    description: "OpenAI GPT-4.1-mini — affordable, high-quality",
+    description: "Vercel AI Gateway — access many models through a single gateway",
   },
   {
-    value: "claude",
-    label: "Claude Sonnet",
-    badge: "Best Quality",
+    value: "openrouter",
+    label: "OpenRouter",
+    badge: "Multi-Model",
     badgeClass: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
-    description: "Anthropic Claude Sonnet — top-tier reasoning",
+    description: "OpenRouter — unified API for many LLMs",
+  },
+  {
+    value: "deepseek",
+    label: "DeepSeek",
+    badge: "Fast",
+    badgeClass: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400",
+    description: "DeepSeek Chat — powerful, low-cost AI model",
   },
   {
     value: "ollama",
@@ -57,7 +53,6 @@ function getStoredProvider(): AIProvider | null {
       return raw as AIProvider;
     }
   } catch {
-    // localStorage may be unavailable (e.g. private browsing).
   }
   return null;
 }
@@ -66,14 +61,8 @@ function setStoredProvider(provider: AIProvider): void {
   try {
     localStorage.setItem(STORAGE_KEY, provider);
   } catch {
-    // Silently ignore.
   }
 }
-
-// ---------------------------------------------------------------------------
-// Context so the entire app can read / write the selected provider without
-// prop-drilling.
-// ---------------------------------------------------------------------------
 
 interface ProviderContextValue {
   provider: AIProvider;
@@ -82,18 +71,6 @@ interface ProviderContextValue {
 
 const ProviderContext = React.createContext<ProviderContextValue | null>(null);
 
-/**
- * Hook to read and update the user's preferred AI provider.
- *
- * Usage:
- * ```
- * const { provider, setProvider } = useAIProvider();
- * fetch("/api/niche/analyze", {
- *   headers: { "x-ai-provider": provider },
- *   body: JSON.stringify({ ... }),
- * });
- * ```
- */
 export function useAIProvider(): ProviderContextValue {
   const ctx = React.useContext(ProviderContext);
   if (!ctx) {
@@ -102,13 +79,9 @@ export function useAIProvider(): ProviderContextValue {
   return ctx;
 }
 
-// ---------------------------------------------------------------------------
-// Provider wrapper (put this in your root layout or page).
-// ---------------------------------------------------------------------------
-
 export function ModelSelectorProvider({ children }: { children: React.ReactNode }) {
   const [provider, setProviderState] = React.useState<AIProvider>(() => {
-    return getStoredProvider() ?? "gemini";
+    return getStoredProvider() ?? "ollama";
   });
 
   const setProvider = React.useCallback((p: AIProvider) => {
@@ -128,12 +101,7 @@ export function ModelSelectorProvider({ children }: { children: React.ReactNode 
   );
 }
 
-// ---------------------------------------------------------------------------
-// The dropdown component.
-// ---------------------------------------------------------------------------
-
 interface ModelSelectorProps {
-  /** Additional classes for the outer wrapper. */
   className?: string;
 }
 
@@ -142,7 +110,6 @@ export function ModelSelector({ className }: ModelSelectorProps) {
   const [open, setOpen] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
 
-  // Close on outside click
   React.useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (
@@ -160,7 +127,6 @@ export function ModelSelector({ className }: ModelSelectorProps) {
 
   return (
     <div ref={containerRef} className={`relative inline-block text-left${className ? ` ${className}` : ""}`}>
-      {/* Trigger button */}
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -183,7 +149,6 @@ export function ModelSelector({ className }: ModelSelectorProps) {
         </svg>
       </button>
 
-      {/* Dropdown menu */}
       {open && (
         <div className="absolute right-0 z-50 mt-2 w-72 origin-top-right rounded-md border bg-popover shadow-lg focus:outline-none">
           <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -204,7 +169,6 @@ export function ModelSelector({ className }: ModelSelectorProps) {
                   isActive ? "bg-accent/50" : ""
                 }`}
               >
-                {/* Radio indicator */}
                 <span
                   className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
                     isActive
@@ -228,7 +192,6 @@ export function ModelSelector({ className }: ModelSelectorProps) {
               </button>
             );
           })}
-          {/* Description for the hovered item (static showing current) */}
           <div className="border-t px-3 py-2 text-xs text-muted-foreground">
             {current.description}
           </div>

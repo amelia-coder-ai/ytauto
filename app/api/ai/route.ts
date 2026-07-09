@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { callAI, getProviderFromHeader, type AIProvider } from "@/lib/ai";
 
 export async function POST(req: NextRequest) {
-  // TODO: Validate the request body with a schema (e.g. zod).
   let body: {
     prompt?: string;
     systemPrompt?: string;
@@ -18,7 +17,6 @@ export async function POST(req: NextRequest) {
 
   const { prompt, systemPrompt, provider: bodyProvider } = body;
 
-  // Resolve provider: body > header > env default
   const provider = bodyProvider ?? getProviderFromHeader(req);
 
   if (!prompt || typeof prompt !== "string") {
@@ -29,15 +27,10 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await callAI(
-      prompt,
-      systemPrompt ?? "",
-      provider
-    );
+    const result = await callAI(prompt, systemPrompt ?? "", { provider });
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    // callAI throws "not implemented yet" until the skeletons are filled in.
     return NextResponse.json({ error: message }, { status: 501 });
   }
 }

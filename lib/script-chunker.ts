@@ -1,5 +1,5 @@
 import { ScriptSceneRow } from "./supabase";
-import { callAI } from "@/lib/ai";
+import { callAIWithFallback } from "@/lib/ai";
 
 export type CameraEffect = 'none' | 'zoom-in' | 'zoom-out' | 'pan-left' | 'pan-right' | 'pan-up' | 'pan-down';
 
@@ -47,9 +47,9 @@ export function pickCameraEffect(
 export async function chunkScript(
   scenes: ScriptSceneRow[],
   imageIntervalSeconds: number,
-  nicheName: string,
   cameraEffect: CameraEffect = 'none',
   cameraEffectMode: CameraEffectMode = 'same',
+  onProgress?: (completed: number, total: number) => void,
 ): Promise<ScriptChunk[]> {
   // Step 1: split content into timed chunks (sync)
   const rawChunks: { slotIndex: number; scriptChunk: string }[] = [];
@@ -89,12 +89,14 @@ export async function chunkScript(
   // Step 2: generate all image prompts in parallel batches (concurrency limit)
   const batchSize = 5;
   const prompts: string[] = [];
+  const totalBatches = Math.ceil(rawChunks.length / batchSize);
   for (let i = 0; i < rawChunks.length; i += batchSize) {
     const batch = rawChunks.slice(i, i + batchSize);
     const batchPrompts = await Promise.all(
-      batch.map((chunk) => generateImagePrompt(chunk.scriptChunk, nicheName))
+      batch.map((chunk) => generateImagePrompt(chunk.scriptChunk))
     );
     prompts.push(...batchPrompts);
+    onProgress?.(Math.min(i + batchSize, rawChunks.length), rawChunks.length);
   }
 
   // Step 3: combine with effects
@@ -120,7 +122,7 @@ export function formatChunksForModal(chunks: ScriptChunk[]): ModalScene[] {
 /**
  * Fallback: extract visual keywords from content to build a text-free prompt.
  */
-function buildFallbackPrompt(scriptContent: string, nicheName: string): string {
+function buildFallbackPrompt(scriptContent: string): string {
   const words = scriptContent.split(/\s+/);
   const stopWords = new Set([
     "the","a","an","is","are","was","were","be","been","being","have","has","had",
@@ -140,8 +142,8 @@ function buildFallbackPrompt(scriptContent: string, nicheName: string): string {
     .slice(0, 8);
 
   const visualDesc = keywords.length >= 3
-    ? `${nicheName} themed scene featuring ${keywords.join(", ")}`
-    : `${nicheName} themed scene`;
+    ? `Scene featuring ${keywords.join(", ")}`
+    : `Cinematic scene`;
 
   return `${visualDesc}, cinematic 4K, dramatic lighting, photorealistic, no text, no watermarks, no subtitles, no words, no captions, no letters`;
 }
@@ -150,7 +152,7 @@ function buildFallbackPrompt(scriptContent: string, nicheName: string): string {
  * Generates a structured image prompt using AI (Ollama → Gemini fallback).
  * Falls back to keyword-based prompt if all AI providers fail.
  */
-async function generateImagePrompt(scriptContent: string, nicheName: string): Promise<string> {
+async function generateImagePrompt(scriptContent: string): Promise<string> {
   const systemPrompt = `You are a visual director for YouTube videos.
 Given a script chunk, return ONLY a valid JSON object with NO extra text.
 
@@ -169,28 +171,15 @@ Return this exact JSON structure:
 }`;
 
   const userPrompt = `Script chunk: "${scriptContent.substring(0, 500)}"
-Niche: "${nicheName}"
 Return JSON only. No markdown.`;
 
-  const providers: { provider: "ollama" | "gemini"; label: string }[] = [
-    { provider: "ollama", label: "Ollama" },
-  ];
-  if (process.env.GEMINI_API_KEY) {
-    providers.push({ provider: "gemini", label: "Gemini" });
-  }
+  try {
+    const res = await callAIWithFallback(userPrompt, systemPrompt, { reasoning: false, timeoutMs: 120_000 });
+    const text = res.content.trim();
 
-  for (const { provider, label } of providers) {
-    try {
-      const response = await callAI(userPrompt, systemPrompt, provider);
-      const text = response.content.trim();
-
-      const jsonStart = text.indexOf("{");
-      const jsonEnd = text.lastIndexOf("}");
-      if (jsonStart === -1 || jsonEnd === -1) {
-        console.warn(`[generateImagePrompt] ${label}: no JSON found`);
-        continue;
-      }
-
+    const jsonStart = text.indexOf("{");
+    const jsonEnd = text.lastIndexOf("}");
+    if (jsonStart !== -1 && jsonEnd !== -1) {
       const parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1)) as {
         scene?: string;
         main_subject?: string;
@@ -200,17 +189,14 @@ Return JSON only. No markdown.`;
       };
 
       const parts = [parsed.scene, parsed.main_subject, parsed.action, parsed.environment, parsed.camera].filter(Boolean);
-      if (parts.length === 0) {
-        console.warn(`[generateImagePrompt] ${label}: empty description`);
-        continue;
+      if (parts.length > 0) {
+        return [...parts, "cinematic 4K, dramatic lighting, photorealistic", "no text, no watermarks, no subtitles, no words, no captions, no letters"].join(", ");
       }
-
-      return [...parts, "cinematic 4K, dramatic lighting, photorealistic", "no text, no watermarks, no subtitles, no words, no captions, no letters"].join(", ");
-    } catch (err) {
-      console.warn(`[generateImagePrompt] ${label} failed:`, err);
     }
+  } catch (err) {
+    console.warn("[generateImagePrompt] AI providers failed:", err);
   }
 
-  console.warn("[generateImagePrompt] all AI providers failed, using fallback");
-  return buildFallbackPrompt(scriptContent, nicheName);
+  console.warn("[generateImagePrompt] using fallback");
+  return buildFallbackPrompt(scriptContent);
 }

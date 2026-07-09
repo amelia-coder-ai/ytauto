@@ -1,20 +1,16 @@
 import 'dotenv/config';
 import { Worker } from 'bullmq';
 import { createClient } from '@supabase/supabase-js';
+import { generateVideo } from '@/lib/video-generator';
 import { VideoJobData } from './video-queue';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+import Redis from 'ioredis';
 
-const supabaseAdmin = createClient(supabaseUrl, serviceKey, {
-  auth: {
-    persistSession: false,
-    autoRefreshToken: false,
-  },
-});
-
-// Use bullmq's internal redis to avoid version conflicts
-import Redis from 'bullmq/node_modules/ioredis';
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { persistSession: false, autoRefreshToken: false } }
+);
 
 const connection = new Redis(
   process.env.REDIS_URL || 'redis://localhost:6379',
@@ -30,58 +26,34 @@ export const videoWorker = new Worker<VideoJobData>(
 
     try {
       console.log(`[Worker] Starting video generation for job ${videoJobId}`);
+      await job.updateProgress(0);
 
-      // Step 1: Fetch video_job from Supabase
-      const { data: videoJob, error: fetchError } = await supabaseAdmin
-        .from('video_jobs')
-        .select('*')
-        .eq('id', videoJobId)
-        .single();
-
-      if (fetchError || !videoJob) {
-        throw new Error(`Failed to fetch video_job: ${fetchError?.message}`);
-      }
-
-      console.log(`[Worker] Fetched video_job for ${videoJobId}`);
-
-      // Step 2: Call /api/video/generate (Modal video generation)
-      console.log(`[Worker] Calling video/generate for ${videoJobId}`);
-      const generateRes = await fetch(
-        `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/video/generate`,
+      const result = await generateVideo(
         {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            videoJobId,
-            scriptId,
-            nicheName,
-            imageIntervalSeconds,
-            voice,
-            ttsSpeed,
-            imageWidth: imageWidth || 1920,
-            imageHeight: imageHeight || 1080,
-            cameraEffect: cameraEffect || 'none',
-            cameraEffectMode: cameraEffectMode || 'same',
-            overlayEffect: overlayEffect || 'none',
-          }),
+          videoJobId,
+          scriptId,
+          nicheName,
+          imageIntervalSeconds,
+          voice,
+          ttsSpeed,
+          imageWidth,
+          imageHeight,
+          cameraEffect,
+          cameraEffectMode,
+          overlayEffect,
+        },
+        (completed, total) => {
+          const pct = total > 0 ? Math.round((completed / total) * 90) : 0;
+          job.updateProgress(pct);
         }
       );
 
-      if (!generateRes.ok) {
-        throw new Error(
-          `Video generation failed: ${generateRes.statusText} - ${await generateRes.text()}`
-        );
-      }
-
-      const generateData = await generateRes.json();
-      console.log(`[Worker] Modal video generated: ${generateData.outputVideoUrl}`);
-
-      // Step 3: Update video_job with final status
+      // Mark the job as ready now that the video file is saved
       const { error: updateError } = await supabaseAdmin
         .from('video_jobs')
         .update({
           status: 'ready',
-          output_video_url: generateData.outputVideoUrl,
+          output_video_url: result.outputVideoUrl,
         })
         .eq('id', videoJobId);
 
@@ -89,8 +61,9 @@ export const videoWorker = new Worker<VideoJobData>(
         throw new Error(`Failed to update final status: ${updateError.message}`);
       }
 
-      console.log(`[Worker] Video generation complete for ${videoJobId}`);
-      return { success: true, videoJobId, finalUrl: generateData.outputVideoUrl };
+      await job.updateProgress(100);
+      console.log(`[Worker] Video generated: ${result.outputVideoUrl}`);
+      return { success: true, videoJobId, finalUrl: result.outputVideoUrl };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.error(`[Worker] Error for job ${videoJobId}:`, errorMsg);
@@ -99,10 +72,7 @@ export const videoWorker = new Worker<VideoJobData>(
       try {
         await supabaseAdmin
           .from('video_jobs')
-          .update({
-            status: 'failed',
-            error_message: errorMsg,
-          })
+          .update({ status: 'failed', error_message: errorMsg })
           .eq('id', videoJobId);
       } catch (e) {
         console.error(`[Worker] Failed to update error status for ${videoJobId}:`, e);
@@ -114,6 +84,8 @@ export const videoWorker = new Worker<VideoJobData>(
   {
     connection,
     concurrency: 1,
+    lockDuration: 10 * 60 * 1000,
+    stalledInterval: 5 * 60 * 1000,
   }
 );
 

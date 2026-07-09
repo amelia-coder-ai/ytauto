@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { callOpenRouter } from "@/lib/ai";
+import { callAIWithFallback } from "@/lib/ai";
 import { supabaseAdmin, type NicheProfileRow } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +23,7 @@ function normalizeTopic(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-function buildSystemPrompt(profile: NicheProfileRow, nicheName: string): string {
+function buildSystemPrompt(profile: NicheProfileRow): string {
   const tone = profile.tone ?? "conversational";
   const style = profile.style ?? "educational";
   const audience = profile.audience_type ?? "general YouTube viewers";
@@ -34,7 +34,6 @@ function buildSystemPrompt(profile: NicheProfileRow, nicheName: string): string 
 
   return (
     `You are a viral YouTube content strategist.\n` +
-    `Niche: ${nicheName}\n` +
     `Tone & style: ${tone}, ${style}\n` +
     `Audience: ${audience}\n` +
     `Keywords: ${keywords}\n` +
@@ -155,12 +154,12 @@ export async function POST(req: NextRequest) {
 
   const usedNormalized = new Set(usedTopics.map(normalizeTopic));
 
-  const systemPrompt = buildSystemPrompt(nicheProfile, niche.name as string);
+  const systemPrompt = buildSystemPrompt(nicheProfile);
   const userPrompt = buildUserPrompt(usedTopics);
 
   let aiContent: string;
   try {
-    const aiResponse = await callOpenRouter(userPrompt, systemPrompt);
+    const aiResponse = await callAIWithFallback(userPrompt, systemPrompt);
     aiContent = aiResponse.content;
   } catch (err) {
     const message = err instanceof Error ? err.message : "AI call failed";
@@ -188,7 +187,7 @@ export async function POST(req: NextRequest) {
   if (topics.length < 5) {
     const retryPrompt = buildUserPrompt([...usedTopics, ...topics]);
     try {
-      const retryResponse = await callOpenRouter(retryPrompt, systemPrompt);
+      const retryResponse = await callAIWithFallback(retryPrompt, systemPrompt);
       if (retryResponse.content) {
         const more = dedupeTopics(
           parseTopicsResponse(retryResponse.content),

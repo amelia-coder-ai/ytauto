@@ -27,6 +27,7 @@ const getStatusStep = (status: string): number => {
     case 'pending':
       return 0;
     case 'generating':
+    case 'rendering':
       return 1;
     case 'ready':
       return 2;
@@ -90,7 +91,6 @@ export default function VideoStatusPage() {
         setStatus(data);
         setError('');
 
-        // Stop polling if generation is complete or failed
         if (data.status === 'ready' || data.status === 'failed') {
           setAutoRefresh(false);
           if (interval) {
@@ -310,7 +310,7 @@ export default function VideoStatusPage() {
           <div className="space-y-2 text-sm">
             <p className="font-medium text-blue-900">💡 Tip</p>
             <p className="text-blue-800">
-              {status.status === 'generating'
+              {status.status === 'generating' || status.status === 'rendering'
                 ? 'Video generation is in progress. This page will update automatically every 3 seconds.'
                 : status.status === 'ready'
                   ? 'Your video is ready to download and use!'
@@ -337,7 +337,7 @@ export default function VideoStatusPage() {
         </div>
 
         {/* Auto-refresh toggle */}
-        {status.status !== 'ready' && status.status !== 'failed' && (
+        {(status.status === 'pending' || status.status === 'generating' || status.status === 'rendering') && (
           <div className="flex items-center gap-2">
             <input
               type="checkbox"

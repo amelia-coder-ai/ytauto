@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, PlusCircle, ListVideo, FileText, History, TrendingUp } from "lucide-react";
+import { LayoutDashboard, PlusCircle, ListVideo, FileText, History, TrendingUp, Video } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -13,6 +13,7 @@ const navItems = [
   { href: "/outperforming", label: "Top Videos", icon: TrendingUp },
   { href: "/script/new", label: "New script", icon: FileText },
   { href: "/scripts", label: "Script history", icon: History },
+  { href: "/videos", label: "Video history", icon: Video },
 ] as const;
 
 export function SidebarNav() {

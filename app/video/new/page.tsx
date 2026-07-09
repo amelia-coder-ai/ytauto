@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -40,15 +39,11 @@ const initialFormData: FormData = {
 interface Script {
   id: string;
   title: string;
-  niche_id: string;
+  nicheId: string;
+  nicheName: string;
   status: string;
-  duration_minutes: number;
-  created_at: string;
-}
-
-interface Niche {
-  id: string;
-  name: string;
+  durationMinutes: number;
+  createdAt: string;
 }
 
 const voices = [
@@ -84,7 +79,6 @@ export default function NewVideoPage() {
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<FormData>(initialFormData);
   const [scripts, setScripts] = useState<Script[]>([]);
-  const [niches, setNiches] = useState<Niche[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [customInterval, setCustomInterval] = useState('');
@@ -102,16 +96,9 @@ export default function NewVideoPage() {
 
   const fetchScriptsAndNiches = async () => {
     try {
-      const [scriptsRes, nichesRes] = await Promise.all([
-        fetch('/api/scripts/list').then(r => r.json()),
-        supabase.from('niches').select('*'),
-      ]);
-
+      const scriptsRes = await fetch('/api/scripts/list').then(r => r.json());
       if (scriptsRes.scripts) {
         setScripts(scriptsRes.scripts);
-      }
-      if (nichesRes.data) {
-        setNiches(nichesRes.data as Niche[]);
       }
     } catch (err) {
       console.error('Failed to fetch scripts:', err);
@@ -119,19 +106,14 @@ export default function NewVideoPage() {
     }
   };
 
-  const getNicheName = (nicheId: string) => {
-    return niches.find((n) => n.id === nicheId)?.name || 'Unknown';
-  };
-
   const handleScriptSelect = (scriptId: string) => {
     const script = scripts.find((s) => s.id === scriptId);
     if (script) {
-      const niche = getNicheName(script.niche_id);
       setFormData({
         ...formData,
         scriptId,
         scriptTitle: script.title,
-        nicheName: niche,
+        nicheName: script.nicheName,
       });
     }
   };
@@ -281,7 +263,7 @@ export default function NewVideoPage() {
                     <option value="">Select a script...</option>
                     {scripts.map((script) => (
                       <option key={script.id} value={script.id}>
-                        {script.title} • {getNicheName(script.niche_id)} • {new Date(script.created_at).toLocaleDateString()}
+                        {script.title} • {script.nicheName} • {new Date(script.createdAt).toLocaleDateString()}
                       </option>
                     ))}
                   </select>

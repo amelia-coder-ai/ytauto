@@ -1,4 +1,4 @@
-import { callOpenRouter } from "@/lib/ai";
+import { callAIWithFallback } from "@/lib/ai";
 import {
   estimateWordCount,
   getSceneStructure,
@@ -80,7 +80,7 @@ export async function runScriptGeneration(options: {
     let notes = template.notes;
 
     try {
-      const aiResponse = await callOpenRouter(userPrompt, systemPrompt, {
+      const aiResponse = await callAIWithFallback(userPrompt, systemPrompt, {
         reasoning: false,
         timeoutMs: 90_000,
       });
@@ -209,7 +209,7 @@ export async function regenerateScriptScene(
   let notes = template.notes;
 
   try {
-    const aiResponse = await callOpenRouter(userPrompt, systemPrompt, {
+    const aiResponse = await callAIWithFallback(userPrompt, systemPrompt, {
       reasoning: false,
       timeoutMs: 90_000,
     });

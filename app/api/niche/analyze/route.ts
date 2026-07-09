@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { callOpenRouter, callAI } from "@/lib/ai";
+import { callAIWithFallback } from "@/lib/ai";
 import { supabaseAdmin } from "@/lib/supabase";
 
 /**
@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 2. Call AI — OpenRouter (fast) primary, Gemini fallback
+  // 2. Call AI — primary provider with Ollama fallback
   const userPrompt = buildUserPrompt(transcripts);
   const userPromptTruncated = userPrompt.length > 60000
     ? userPrompt.slice(0, 30000) + "\n\n[...truncated...]\n\n" + userPrompt.slice(-30000)
@@ -97,21 +97,11 @@ export async function POST(req: NextRequest) {
   let aiError: string | null = null;
 
   try {
-    const res = await callOpenRouter(userPromptTruncated, SYSTEM_PROMPT, { reasoning: false, timeoutMs: 120_000 });
+    const res = await callAIWithFallback(userPromptTruncated, SYSTEM_PROMPT, { reasoning: false, timeoutMs: 120_000 });
     aiContent = res.content;
   } catch (err) {
-    aiError = err instanceof Error ? err.message : "OpenRouter call failed";
-    console.warn("[niche/analyze] OpenRouter failed:", aiError);
-  }
-
-  if (!aiContent && process.env.GEMINI_API_KEY) {
-    try {
-      const res = await callAI(userPromptTruncated, SYSTEM_PROMPT, "gemini");
-      aiContent = res.content;
-    } catch (err) {
-      aiError = err instanceof Error ? err.message : "Gemini call failed";
-      console.warn("[niche/analyze] Gemini fallback failed:", aiError);
-    }
+    aiError = err instanceof Error ? err.message : "AI call failed";
+    console.warn("[niche/analyze] AI failed:", aiError);
   }
 
   if (!aiContent) {

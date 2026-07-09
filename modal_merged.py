@@ -2,8 +2,10 @@ from io import BytesIO
 from pathlib import Path
 from typing import Optional, List
 import base64
+import json
 import tempfile
 import os
+import urllib.request
 
 import modal
 
@@ -258,6 +260,26 @@ class VideoGenerator:
         byte_stream.seek(0)
         return byte_stream.getvalue()
 
+    def _report_progress(self, progress_url: str, secret: str, video_job_id: str, completed: int, total: int):
+        if not progress_url:
+            return
+        payload = json.dumps({
+            "videoJobId": video_job_id,
+            "completedScenes": completed,
+            "totalScenes": total,
+            "secret": secret,
+        }).encode("utf-8")
+        try:
+            req = urllib.request.Request(
+                progress_url,
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=10)
+        except Exception as e:
+            print(f"[Progress] Failed to report progress: {e}")
+
     @modal.method()
     def generate_video(
         self,
@@ -267,6 +289,9 @@ class VideoGenerator:
         image_width: int = 1920,
         image_height: int = 1080,
         overlay_effect: str = "none",
+        progress_url: str = "",
+        progress_secret: str = "",
+        video_job_id: str = "",
     ) -> bytes:
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -333,6 +358,7 @@ class VideoGenerator:
                     )
                     print(f"Clip created: {clip_path}")
                     clip_files.append(str(clip_path))
+                    self._report_progress(progress_url, progress_secret, video_job_id, idx + 1, len(scenes))
                 except ffmpeg.Error as e:
                     print(f"FFmpeg error: {e.stderr.decode() if e.stderr else str(e)}")
                     raise
@@ -426,6 +452,9 @@ def flask_app():
                 image_height = first_item.get("image_height", 1080)
                 return_base64 = first_item.get("return_base64", False)
                 overlay_effect = first_item.get("overlay_effect", "none")
+                progress_url = first_item.get("progress_url", "")
+                progress_secret = first_item.get("progress_secret", "")
+                video_job_id = first_item.get("video_job_id", "")
             else:
                 scenes = data.get("scenes", [])
                 voice = data.get("voice", "af_heart")
@@ -434,6 +463,9 @@ def flask_app():
                 image_height = data.get("image_height", 1080)
                 return_base64 = data.get("return_base64", False)
                 overlay_effect = data.get("overlay_effect", "none")
+                progress_url = data.get("progress_url", "")
+                progress_secret = data.get("progress_secret", "")
+                video_job_id = data.get("video_job_id", "")
 
             if not scenes:
                 return jsonify({"error": "scenes array is required"}), 400
@@ -457,6 +489,9 @@ def flask_app():
                 image_width=image_width,
                 image_height=image_height,
                 overlay_effect=overlay_effect,
+                progress_url=progress_url,
+                progress_secret=progress_secret,
+                video_job_id=video_job_id,
             )
 
             if return_base64:
